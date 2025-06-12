@@ -2,3 +2,4 @@ flask
 google-genai
 pydantic>=2
 numpy
+SpeechRecognition
