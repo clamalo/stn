@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 from typing import Dict, Tuple, List, Optional
 
 import numpy as np
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, session
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
@@ -23,6 +25,7 @@ STOPWORDS = {
 }
 
 app = Flask(__name__, static_folder='static', static_url_path='')
+app.secret_key = os.getenv('SECRET_KEY', 'dev')
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -70,21 +73,56 @@ def cosine(a: np.ndarray, b: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 # Storage
 ROOT = Path(__file__).resolve().parent
+USERS_PATH = ROOT / 'users.json'
 BUCKETS_PATH = ROOT / 'buckets.json'
 NOTES_PATH = ROOT / 'notes.json'
 
+users: Dict[str, str] = json.loads(USERS_PATH.read_text()) if USERS_PATH.exists() else {}
+
 if BUCKETS_PATH.exists():
     raw = json.loads(BUCKETS_PATH.read_text())
-    buckets: Dict[Tuple[str, str], Bucket] = {
-        tuple(k.split('::')): Bucket(**v) for k, v in raw.items()
+    buckets: Dict[str, Dict[Tuple[str, str], Bucket]] = {
+        user: {tuple(k.split('::')): Bucket(**v) for k, v in data.items()}
+        for user, data in raw.items()
     }
 else:
-    buckets = {
-        ('work', 'Scratchpad'): Bucket(side='work', name='Scratchpad'),
-        ('personal', 'Scratchpad'): Bucket(side='personal', name='Scratchpad'),
-    }
+    buckets = {}
 
-notes: List[dict] = json.loads(NOTES_PATH.read_text()) if NOTES_PATH.exists() else []
+if NOTES_PATH.exists():
+    raw_notes = json.loads(NOTES_PATH.read_text())
+    notes: Dict[str, List[dict]] = raw_notes
+else:
+    notes = {}
+
+
+def save_users():
+    USERS_PATH.write_text(json.dumps(users, indent=2))
+
+
+def save_buckets():
+    BUCKETS_PATH.write_text(
+        json.dumps(
+            {
+                user: {f"{s}::{n}": b.model_dump() for (s, n), b in data.items()}
+                for user, data in buckets.items()
+            },
+            indent=2,
+        )
+    )
+
+
+def save_notes():
+    NOTES_PATH.write_text(json.dumps(notes, indent=2))
+
+
+def login_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        username = session.get('user')
+        if not username:
+            return jsonify({'error': 'unauthorized'}), 401
+        return func(*args, **kwargs)
+    return wrapper
 
 # Gemini client
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -92,9 +130,18 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # ---------------------------------------------------------------------------
 # Logic
 
-def process_text(raw_text: str) -> dict:
-    existing_projects_work = [n for (s, n) in buckets if s == 'work' and n != 'Scratchpad']
-    existing_projects_personal = [n for (s, n) in buckets if s == 'personal' and n != 'Scratchpad']
+def process_text(raw_text: str, username: str) -> dict:
+    user_buckets = buckets.setdefault(
+        username,
+        {
+            ('work', 'Scratchpad'): Bucket(side='work', name='Scratchpad'),
+            ('personal', 'Scratchpad'): Bucket(side='personal', name='Scratchpad'),
+        },
+    )
+    user_notes = notes.setdefault(username, [])
+
+    existing_projects_work = [n for (s, n) in user_buckets if s == 'work' and n != 'Scratchpad']
+    existing_projects_personal = [n for (s, n) in user_buckets if s == 'personal' and n != 'Scratchpad']
 
     prompt = f"""
 You are an organisational assistant. Clean up the transcribed note, decide whether it's 'work' or 'personal', and, if appropriate, propose a concise project name.
@@ -137,7 +184,7 @@ Transcribed text (verbatim):
         cand_vec = np.array(embed_resp.embeddings[0].values, dtype=np.float32)
 
         best_name, best_score = None, 0.0
-        for (side, name), bucket in buckets.items():
+        for (side, name), bucket in user_buckets.items():
             if side != chosen_side or name == 'Scratchpad' or bucket.note_count == 0:
                 continue
             score = cosine(cand_vec, np.array(bucket.centroid, dtype=np.float32))
@@ -150,24 +197,24 @@ Transcribed text (verbatim):
         proj_name = 'Scratchpad'
 
     bucket_key = (chosen_side, proj_name)
-    if bucket_key not in buckets:
-        buckets[bucket_key] = Bucket(side=chosen_side, name=proj_name)
+    if bucket_key not in user_buckets:
+        user_buckets[bucket_key] = Bucket(side=chosen_side, name=proj_name)
 
     text_vec = client.models.embed_content(model=EMBED_MODEL, contents=note_info.clean).embeddings[0].values
-    buckets[bucket_key].update_centroid(text_vec)
+    user_buckets[bucket_key].update_centroid(text_vec)
 
     note = {
-        'id': len(notes) + 1,
+        'id': len(user_notes) + 1,
         'created_at': datetime.now(timezone.utc).isoformat(),
         'side': chosen_side,
         'bucket': proj_name,
         'clean_text': note_info.clean,
         'rationale': note_info.rationale,
     }
-    notes.append(note)
+    user_notes.append(note)
 
-    BUCKETS_PATH.write_text(json.dumps({f"{s}::{n}": b.model_dump() for (s, n), b in buckets.items()}, indent=2))
-    NOTES_PATH.write_text(json.dumps(notes, indent=2))
+    save_buckets()
+    save_notes()
 
     return note
 
@@ -177,17 +224,66 @@ Transcribed text (verbatim):
 def index():
     return send_from_directory(app.static_folder, 'index.html')
 
+
+@app.route('/signup', methods=['POST'])
+def signup():
+    data = request.get_json(force=True)
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    if not username or not password:
+        return jsonify({'error': 'username and password required'}), 400
+    if username in users:
+        return jsonify({'error': 'username exists'}), 400
+    users[username] = generate_password_hash(password)
+    save_users()
+    buckets[username] = {
+        ('work', 'Scratchpad'): Bucket(side='work', name='Scratchpad'),
+        ('personal', 'Scratchpad'): Bucket(side='personal', name='Scratchpad'),
+    }
+    notes[username] = []
+    save_buckets()
+    save_notes()
+    session['user'] = username
+    return jsonify({'username': username})
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json(force=True)
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    if username not in users or not check_password_hash(users[username], password):
+        return jsonify({'error': 'invalid credentials'}), 401
+    session['user'] = username
+    return jsonify({'username': username})
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.pop('user', None)
+    return jsonify({'success': True})
+
+
+@app.route('/current_user')
+def current_user_route():
+    return jsonify({'username': session.get('user')})
+
 @app.route('/process_note', methods=['POST'])
+@login_required
 def process_note_route():
+    username = session['user']
     data = request.get_json(force=True)
     text = data.get('text', '').strip()
     if not text:
         return jsonify({'error': 'no text'}), 400
-    note = process_text(text)
+    note = process_text(text, username)
     return jsonify(note)
 
 @app.route('/buckets')
+@login_required
 def list_buckets():
+    username = session['user']
+    user_buckets = buckets.get(username, {})
     return jsonify({
         'buckets': [
             {
@@ -195,13 +291,23 @@ def list_buckets():
                 'name': n,
                 'note_count': b.note_count,
             }
-            for (s, n), b in buckets.items()
+            for (s, n), b in user_buckets.items()
             if not (n == 'Scratchpad' and b.note_count == 0)
         ]
     })
 
 @app.route('/buckets/<side>/<name>', methods=['PUT'])
+@login_required
 def edit_bucket(side, name):
+    username = session['user']
+    user_buckets = buckets.setdefault(
+        username,
+        {
+            ('work', 'Scratchpad'): Bucket(side='work', name='Scratchpad'),
+            ('personal', 'Scratchpad'): Bucket(side='personal', name='Scratchpad'),
+        },
+    )
+    user_notes = notes.setdefault(username, [])
     """Edit bucket name"""
     data = request.get_json(force=True)
     new_name = data.get('new_name', '').strip()
@@ -215,58 +321,63 @@ def edit_bucket(side, name):
     old_key = (side, name)
     new_key = (side, new_name)
     
-    if old_key not in buckets:
+    if old_key not in user_buckets:
         return jsonify({'error': 'Bucket not found'}), 404
-    
-    if new_key in buckets:
+
+    if new_key in user_buckets:
         return jsonify({'error': 'Bucket with new name already exists'}), 409
-    
+
     # Update bucket
-    bucket = buckets[old_key]
+    bucket = user_buckets[old_key]
     bucket.name = new_name
-    buckets[new_key] = bucket
-    del buckets[old_key]
-    
+    user_buckets[new_key] = bucket
+    del user_buckets[old_key]
+
     # Update all notes with the old bucket name
-    for note in notes:
+    for note in user_notes:
         if note['side'] == side and note['bucket'] == name:
             note['bucket'] = new_name
-    
-    # Save changes
-    BUCKETS_PATH.write_text(json.dumps({f"{s}::{n}": b.model_dump() for (s, n), b in buckets.items()}, indent=2))
-    NOTES_PATH.write_text(json.dumps(notes, indent=2))
+
+    save_buckets()
+    save_notes()
     
     return jsonify({'success': True})
 
 @app.route('/buckets/<side>/<name>', methods=['DELETE'])
+@login_required
 def delete_bucket(side, name):
+    username = session['user']
+    user_buckets = buckets.get(username, {})
+    user_notes = notes.get(username, [])
     """Delete bucket and all its notes"""
     if name == 'Scratchpad':
         return jsonify({'error': 'Cannot delete Scratchpad'}), 400
     
     bucket_key = (side, name)
     
-    if bucket_key not in buckets:
+    if bucket_key not in user_buckets:
         return jsonify({'error': 'Bucket not found'}), 404
     
     # Remove bucket
-    del buckets[bucket_key]
+    del user_buckets[bucket_key]
     
     # Remove all notes from this bucket
-    global notes
-    notes = [note for note in notes if not (note['side'] == side and note['bucket'] == name)]
+    notes[username] = [note for note in user_notes if not (note['side'] == side and note['bucket'] == name)]
     
     # Save changes
-    BUCKETS_PATH.write_text(json.dumps({f"{s}::{n}": b.model_dump() for (s, n), b in buckets.items()}, indent=2))
-    NOTES_PATH.write_text(json.dumps(notes, indent=2))
+    save_buckets()
+    save_notes()
     
     return jsonify({'success': True})
 
 @app.route('/buckets/<side>/<name>/notes')
+@login_required
 def get_bucket_notes(side, name):
+    username = session['user']
+    user_notes = notes.get(username, [])
     """Get all notes for a specific bucket"""
     bucket_notes = [
-        note for note in notes 
+        note for note in user_notes
         if note['side'] == side and note['bucket'] == name
     ]
     
@@ -283,7 +394,10 @@ def get_bucket_notes(side, name):
     })
 
 @app.route('/notes/<int:note_id>', methods=['PUT'])
+@login_required
 def edit_note(note_id):
+    username = session['user']
+    user_notes = notes.setdefault(username, [])
     """Edit a note's text"""
     data = request.get_json(force=True)
     new_text = data.get('text', '').strip()
@@ -293,7 +407,7 @@ def edit_note(note_id):
     
     # Find the note
     note = None
-    for n in notes:
+    for n in user_notes:
         if n['id'] == note_id:
             note = n
             break
@@ -306,30 +420,33 @@ def edit_note(note_id):
     note['updated_at'] = datetime.now(timezone.utc).isoformat()
     
     # Save changes
-    NOTES_PATH.write_text(json.dumps(notes, indent=2))
+    save_notes()
     
     return jsonify({'success': True, 'note': note})
 
 @app.route('/notes/<int:note_id>', methods=['DELETE'])
+@login_required
 def delete_note(note_id):
     """Delete a note"""
-    global notes
+    username = session['user']
+    user_notes = notes.get(username, [])
     
     # Find and remove the note
-    original_count = len(notes)
-    notes = [note for note in notes if note['id'] != note_id]
+    original_count = len(user_notes)
+    notes[username] = [note for note in user_notes if note['id'] != note_id]
     
-    if len(notes) == original_count:
+    if len(notes[username]) == original_count:
         return jsonify({'error': 'Note not found'}), 404
     
     # Update bucket note count
     # We need to recalculate all bucket counts since we don't know which bucket the note was in
-    for bucket in buckets.values():
-        bucket.note_count = len([n for n in notes if n['side'] == bucket.side and n['bucket'] == bucket.name])
+    user_buckets = buckets.get(username, {})
+    for bucket in user_buckets.values():
+        bucket.note_count = len([n for n in notes[username] if n['side'] == bucket.side and n['bucket'] == bucket.name])
     
     # Save changes
-    NOTES_PATH.write_text(json.dumps(notes, indent=2))
-    BUCKETS_PATH.write_text(json.dumps({f"{s}::{n}": b.model_dump() for (s, n), b in buckets.items()}, indent=2))
+    save_notes()
+    save_buckets()
     
     return jsonify({'success': True})
 
