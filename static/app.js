@@ -3,10 +3,13 @@ let recognizer = null;
 let mediaRecorder = null;
 let audioChunks = [];
 const btn = document.getElementById('mic');
-const status = document.getElementById('status');
-const userInfo = document.getElementById('user-info');
-const mainContent = document.getElementById('main-content');
+const userInfo = document.getElementById('profile-dropdown');
+const mainContent = document.getElementById('main-interface');
 const usernameSpan = document.getElementById('current-user');
+let audioContext;
+let analyser;
+let microphone;
+let animationId;
 
 document.getElementById('logout-btn').addEventListener('click', logout);
 
@@ -64,21 +67,29 @@ function generateUserAvatar(name) {
 }
 
 function setLoggedIn(name) {
-  usernameSpan.textContent = name;
-  
   // Generate and set avatar
-  const userAvatar = document.getElementById('user-avatar');
+  const userAvatar = document.getElementById('profile-avatar');
   if (userAvatar) {
     userAvatar.textContent = generateUserAvatar(name);
   }
   
+  // Hide auth section and show main interface
+  document.getElementById('auth-section').classList.remove('active');
   userInfo.style.display = 'flex';
-  mainContent.style.display = 'block';
+  mainContent.style.display = 'flex';
+  
+  // Show mini projects UI
+  document.getElementById('quick-projects-btn').style.display = 'flex';
+  document.getElementById('mini-projects-sidebar').style.display = 'block';
+  
   loadBuckets();
   if (!refreshInterval) {
     refreshInterval = setInterval(loadBuckets, 30000);
   }
 }
+
+// Make setLoggedIn globally accessible
+window.setLoggedIn = setLoggedIn;
 
 async function checkAuth() {
   const r = await fetch('/current_user');
@@ -86,13 +97,19 @@ async function checkAuth() {
   if (data.username) {
     setLoggedIn(data.username);
   } else {
-    window.location.href = '/';
+    // Show auth section instead of redirecting
+    document.getElementById('auth-section').classList.add('active');
+    userInfo.style.display = 'none';
+    mainContent.style.display = 'none';
   }
 }
 
 // Project view functionality
 let currentProject = null;
 let refreshInterval = null;
+let miniProjectsVisible = false;
+let lastProjectCount = 0;
+let recentProjects = [];
 
 btn.addEventListener('click', () => {
   if (!recording) {
@@ -103,30 +120,32 @@ btn.addEventListener('click', () => {
 });
 
 function updateStatus(message, type = '') {
-  status.textContent = message;
-  status.className = 'status';
-  if (type) {
-    status.classList.add(type);
+  // In the new magical interface, we show status through orb visual changes and toasts
+  // instead of a status text element
+  
+  if (type === 'listening') {
+    btn.classList.add('listening');
+  } else {
+    btn.classList.remove('listening');
   }
   
-  // Add accessibility announcement
-  status.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
-  
-  // Add visual feedback for different states
-  if (type === 'listening') {
-    status.innerHTML = `
-      <div class="loading-spinner" style="width: 1rem; height: 1rem; margin-right: 0.5rem;"></div>
-      ${message}
-    `;
+  // Show toast for important status updates
+  if (type && type !== 'listening') {
+    showToast(message, type);
   }
 }
 
 function start() {
+  // Start audio level monitoring for orb bounce effect
+  startAudioLevelMonitoring();
+
   if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognizer = new SR();
     recognizer.lang = 'en-US';
-    recognizer.interimResults = false;
+    recognizer.interimResults = true; // Enable interim results to keep connection alive
+    recognizer.continuous = true; // Keep listening continuously
+    recognizer.maxAlternatives = 1;
   } else if (navigator.mediaDevices && window.MediaRecorder) {
     startFallbackRecording();
     return;
@@ -135,39 +154,104 @@ function start() {
     return;
   }
   
+  window.finalTranscript = '';
+  window.processingTimeout = null;
+  
   recognizer.onresult = (e) => {
-    const text = e.results[0][0].transcript;
-    updateStatus(`Processing: "${text}"`, 'processing');
+    let interimTranscript = '';
     
-    // Provide better user feedback
-    showToast('Voice captured! Processing your note...', 'info', 3000);
+    // Process all results
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const transcript = e.results[i][0].transcript;
+      if (e.results[i].isFinal) {
+        window.finalTranscript += transcript;
+      } else {
+        interimTranscript += transcript;
+      }
+    }
     
-    fetch('/process_note', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
-    })
-    .then(r => r.json())
-    .then(data => {
-      updateStatus(`✅ Saved to ${data.bucket}`, 'success');
-      showToast(`Note saved to ${data.bucket} project!`, 'success');
-      loadBuckets();
-      
-      // Clear status after 5 seconds
-      setTimeout(() => {
-        updateStatus('Click the microphone to start recording');
-      }, 5000);
-    })
-    .catch(err => {
-      console.error(err);
-      updateStatus('❌ Failed to save note', 'error');
-      showToast('Failed to save your note. Please try again.', 'error');
-      
-      // Clear status after 5 seconds
-      setTimeout(() => {
-        updateStatus('Click the microphone to start recording');
-      }, 5000);
-    });
+    // Show live feedback with interim results
+    const currentText = window.finalTranscript + interimTranscript;
+    if (currentText.trim()) {
+      updateStatus(`🎤 "${currentText.trim()}" (keep speaking or wait 2 seconds to process)`, 'listening');
+    }
+    
+    // Clear any existing timeout
+    if (window.processingTimeout) {
+      clearTimeout(window.processingTimeout);
+    }
+    
+    // Set a new timeout to process after 2 seconds of no new speech
+    window.processingTimeout = setTimeout(() => {
+      if (window.finalTranscript.trim() || interimTranscript.trim()) {
+        const textToProcess = (window.finalTranscript + interimTranscript).trim();
+        
+        if (textToProcess) {
+          updateStatus(`Processing: "${textToProcess}"`, 'processing');
+          showToast('Voice captured! Processing your note...', 'info', 3000);
+          
+          fetch('/process_note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: textToProcess })
+          })
+          .then(r => r.json())
+          .then(data => {
+            updateStatus(`✅ Saved to ${data.bucket}`, 'success');
+            
+            // Enhanced notification with project information
+            const projectName = data.bucket;
+            const notePreview = textToProcess.length > 50 ? textToProcess.substring(0, 50) + '...' : textToProcess;
+            
+            showToast(`Note saved to "${projectName}" project!`, 'success');
+            
+            // Ensure mini projects sidebar is visible for the animation
+            const sidebar = document.getElementById('mini-projects-sidebar');
+            const btn = document.getElementById('quick-projects-btn');
+            const wasVisible = miniProjectsVisible;
+            
+            if (!miniProjectsVisible) {
+              sidebar.classList.add('visible');
+              btn.classList.add('active');
+              miniProjectsVisible = true;
+            }
+            
+            // Show magical note creation animation
+            showNoteCreationAnimation(projectName, notePreview);
+            
+            // Auto-hide sidebar after animation if it wasn't originally visible
+            if (!wasVisible) {
+              setTimeout(() => {
+                if (miniProjectsVisible && !btn.matches(':hover') && !sidebar.matches(':hover')) {
+                  miniProjectsVisible = false;
+                  sidebar.classList.remove('visible');
+                  btn.classList.remove('active');
+                }
+              }, 3000);
+            }
+            
+            // Update buckets and mini projects
+            loadBuckets();
+            
+            // If currently viewing the project, refresh notes and highlight new one
+            if (currentProject && currentProject.name === projectName) {
+              setTimeout(() => {
+                loadProjectNotes(currentProject.side, currentProject.name, true);
+              }, 300);
+            }
+            
+            // Stop recording after processing
+            stop();
+          })
+          .catch(err => {
+            console.error(err);
+            updateStatus('❌ Failed to save note', 'error');
+            showToast('Failed to save your note. Please try again.', 'error');
+            stop();
+          });
+        }
+      }
+    }, 2000); // Wait 2 seconds after last speech before processing
   };
   
   recognizer.onerror = (e) => {
@@ -193,11 +277,6 @@ function start() {
     
     updateStatus(errorMessage, 'error');
     stop();
-    
-    // Clear status after 3 seconds
-    setTimeout(() => {
-      updateStatus('Click the microphone to start recording');
-    }, 3000);
   };
   
   recognizer.onend = () => {
@@ -205,10 +284,9 @@ function start() {
   };
   
   recording = true;
-  btn.classList.add('recording');
-  btn.textContent = '🛑';
+  btn.classList.add('listening');
   btn.setAttribute('aria-label', 'Stop voice recording');
-  btn.title = 'Click to stop recording (or press Escape)';
+  btn.title = 'Click to stop recording';
   updateStatus('🎤 Listening... Speak now', 'listening');
   
   try {
@@ -222,6 +300,9 @@ function start() {
 
 function startFallbackRecording() {
   navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    // Set up audio level monitoring for orb bounce
+    setupAudioAnalyser(stream);
+
     mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
     mediaRecorder.ondataavailable = (e) => {
@@ -249,24 +330,17 @@ function startFallbackRecording() {
           updateStatus(`✅ Saved to ${data.bucket}`, 'success');
           showToast(`Note saved to ${data.bucket} project!`, 'success');
           loadBuckets();
-          setTimeout(() => {
-            updateStatus('Click the microphone to start recording');
-          }, 5000);
         })
         .catch(err => {
           console.error(err);
           updateStatus('❌ Failed to save note', 'error');
-          setTimeout(() => {
-            updateStatus('Click the microphone to start recording');
-          }, 5000);
         });
     };
 
     recording = true;
-    btn.classList.add('recording');
-    btn.textContent = '🛑';
+    btn.classList.add('listening');
     btn.setAttribute('aria-label', 'Stop voice recording');
-    btn.title = 'Click to stop recording (or press Escape)';
+    btn.title = 'Click to stop recording';
     updateStatus('🎤 Listening... Speak now', 'listening');
 
     mediaRecorder.start();
@@ -278,10 +352,23 @@ function startFallbackRecording() {
 
 function stop() {
   recording = false;
-  btn.classList.remove('recording');
-  btn.textContent = '🎙️';
+  btn.classList.remove('listening');
   btn.setAttribute('aria-label', 'Start voice recording');
-  btn.title = 'Click to start recording (or press Space)';
+  btn.title = 'Click to start recording';
+  
+  // Stop audio level monitoring
+  stopAudioLevelMonitoring();
+  
+  // Clear any pending processing timeout
+  if (window.processingTimeout) {
+    clearTimeout(window.processingTimeout);
+    window.processingTimeout = null;
+  }
+  
+  // Reset transcript variables
+  if (window.finalTranscript !== undefined) {
+    window.finalTranscript = '';
+  }
   
   if (recognizer) {
     try {
@@ -424,6 +511,9 @@ function loadBuckets() {
         card.style.animationDelay = `${index * 0.1}s`;
         bucketsContainer.appendChild(card);
       });
+      
+      // Update mini projects after loading buckets
+      updateMiniProjects(buckets);
     })
     .catch(err => {
       console.error('Failed to load buckets:', err);
@@ -437,6 +527,328 @@ function loadBuckets() {
     });
 }
 
+// Mini Projects Functionality
+function toggleMiniProjects() {
+  miniProjectsVisible = !miniProjectsVisible;
+  const sidebar = document.getElementById('mini-projects-sidebar');
+  const btn = document.getElementById('quick-projects-btn');
+  
+  if (miniProjectsVisible) {
+    sidebar.classList.add('visible');
+    btn.classList.add('active');
+  } else {
+    sidebar.classList.remove('visible');
+    btn.classList.remove('active');
+  }
+}
+
+function updateMiniProjects(buckets) {
+  const miniProjectsList = document.getElementById('mini-projects-list');
+  const counterBadge = document.getElementById('project-counter-badge');
+  const quickBtn = document.getElementById('quick-projects-btn');
+  
+  // Filter out Scratchpad and sort by note count
+  const nonScratchpadBuckets = buckets.filter(b => b.name !== 'Scratchpad');
+  const sortedBuckets = nonScratchpadBuckets.sort((a, b) => b.note_count - a.note_count);
+  
+  // Update counter badge
+  if (nonScratchpadBuckets.length > 0) {
+    counterBadge.textContent = nonScratchpadBuckets.length;
+    counterBadge.style.display = 'block';
+  } else {
+    counterBadge.style.display = 'none';
+  }
+  
+  // Check for new projects
+  const currentProjectCount = nonScratchpadBuckets.length;
+  const hasNewProjects = currentProjectCount > lastProjectCount && lastProjectCount > 0;
+  lastProjectCount = currentProjectCount;
+  
+  if (nonScratchpadBuckets.length === 0) {
+    miniProjectsList.innerHTML = `
+      <div class="empty-state" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+        <div style="font-size: 2rem; margin-bottom: 0.5rem;">📁</div>
+        <p style="font-size: 0.9rem;">No projects yet</p>
+      </div>
+    `;
+    return;
+  }
+  
+  // Show up to 5 most recent projects
+  const recentBuckets = sortedBuckets.slice(0, 5);
+  
+  miniProjectsList.innerHTML = '';
+  recentBuckets.forEach((bucket, index) => {
+    const item = createMiniProjectItem(bucket, hasNewProjects && index === 0);
+    miniProjectsList.appendChild(item);
+  });
+  
+  // Auto-show sidebar briefly if new projects were created
+  if (hasNewProjects && !miniProjectsVisible) {
+    showNewProjectNotification();
+  }
+}
+
+function createMiniProjectItem(bucket, isNew = false) {
+  const item = document.createElement('div');
+  item.className = `mini-project-item ${isNew ? 'new-project' : ''}`;
+  item.setAttribute('role', 'button');
+  item.setAttribute('tabindex', '0');
+  
+  const noteText = bucket.note_count === 1 ? 'note' : 'notes';
+  
+  item.innerHTML = `
+    <div class="mini-project-info">
+      <div class="mini-project-name">${bucket.name}</div>
+      <div class="mini-project-stats">${bucket.note_count} ${noteText}</div>
+    </div>
+    <div class="mini-project-side ${bucket.side.toLowerCase()}">${bucket.side}</div>
+  `;
+  
+  // Click to open project
+  item.addEventListener('click', () => {
+    openProject(bucket);
+    toggleMiniProjects(); // Close mini projects when opening full view
+  });
+  
+  // Keyboard support
+  item.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      item.click();
+    }
+  });
+  
+  return item;
+}
+
+function showNewProjectNotification() {
+  const sidebar = document.getElementById('mini-projects-sidebar');
+  const btn = document.getElementById('quick-projects-btn');
+  
+  // Briefly show the sidebar to indicate new project
+  sidebar.classList.add('visible');
+  btn.classList.add('active');
+  miniProjectsVisible = true;
+  
+  // Show toast notification
+  showToast('New project created! 📁', 'success', 3000);
+  
+  // Auto-hide after 4 seconds if user doesn't interact (longer to allow for note animation)
+  setTimeout(() => {
+    if (miniProjectsVisible && !btn.matches(':hover') && !sidebar.matches(':hover')) {
+      // User didn't manually interact, auto-close
+      miniProjectsVisible = false;
+      sidebar.classList.remove('visible');
+      btn.classList.remove('active');
+    }
+  }, 4000);
+}
+
+function showNoteCreationAnimation(projectName, notePreview) {
+  // Get orb position (start point)
+  const orb = document.getElementById('mic');
+  const orbRect = orb.getBoundingClientRect();
+  const orbCenter = {
+    x: orbRect.left + orbRect.width / 2,
+    y: orbRect.top + orbRect.height / 2
+  };
+  
+  // Find the target project in mini sidebar or use the quick projects button
+  let targetElement = null;
+  const miniProjectItems = document.querySelectorAll('.mini-project-item');
+  
+  // Look for the specific project in the mini sidebar
+  for (const item of miniProjectItems) {
+    const nameEl = item.querySelector('.mini-project-name');
+    if (nameEl && nameEl.textContent.trim() === projectName) {
+      targetElement = item;
+      break;
+    }
+  }
+  
+  // If not found in mini sidebar or sidebar is not visible, use the quick projects button
+  if (!targetElement || !document.getElementById('mini-projects-sidebar').classList.contains('visible')) {
+    targetElement = document.getElementById('quick-projects-btn');
+  }
+  
+  const targetRect = targetElement.getBoundingClientRect();
+  const targetCenter = {
+    x: targetRect.left + targetRect.width / 2,
+    y: targetRect.top + targetRect.height / 2
+  };
+  
+  // Create the flying note element
+  const noteElement = document.createElement('div');
+  noteElement.style.cssText = `
+    position: fixed;
+    left: ${orbCenter.x}px;
+    top: ${orbCenter.y}px;
+    transform: translate(-50%, -50%);
+    background: rgba(16, 185, 129, 0.15);
+    border: 2px solid var(--success-color);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    color: var(--success-color);
+    font-size: 0.8rem;
+    z-index: 3000;
+    backdrop-filter: blur(15px);
+    box-shadow: 0 8px 32px rgba(16, 185, 129, 0.4);
+    pointer-events: none;
+    opacity: 1;
+    max-width: 250px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    font-weight: 500;
+  `;
+  
+  noteElement.textContent = `📝 ${notePreview}`;
+  document.body.appendChild(noteElement);
+  
+  // Create a magical trail effect
+  const trail = document.createElement('div');
+  trail.style.cssText = `
+    position: fixed;
+    left: ${orbCenter.x}px;
+    top: ${orbCenter.y}px;
+    width: 3px;
+    height: 3px;
+    background: var(--success-color);
+    border-radius: 50%;
+    z-index: 2999;
+    pointer-events: none;
+    opacity: 0;
+    box-shadow: 0 0 20px var(--success-color);
+  `;
+  document.body.appendChild(trail);
+  
+     // Create trailing particles function
+   function createTrailParticle(x, y, delay = 0) {
+     setTimeout(() => {
+       const particle = document.createElement('div');
+       particle.className = 'note-particle';
+       particle.style.left = `${x}px`;
+       particle.style.top = `${y}px`;
+       particle.style.transform = 'translate(-50%, -50%)';
+       document.body.appendChild(particle);
+       
+       setTimeout(() => {
+         if (particle.parentNode) particle.parentNode.removeChild(particle);
+       }, 1000);
+     }, delay);
+   }
+   
+   // Start the flight animation
+   setTimeout(() => {
+     // Move the note to the target
+     noteElement.style.left = `${targetCenter.x}px`;
+     noteElement.style.top = `${targetCenter.y}px`;
+     noteElement.style.transform = 'translate(-50%, -50%) scale(0.3)';
+     noteElement.style.opacity = '0.8';
+     
+     // Animate the trail following
+     trail.style.left = `${targetCenter.x}px`;
+     trail.style.top = `${targetCenter.y}px`;
+     trail.style.opacity = '1';
+     trail.style.transition = 'all 1.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+     
+     // Create magical trailing particles along the flight path
+     const steps = 8;
+     for (let i = 0; i < steps; i++) {
+       const progress = (i + 1) / steps;
+       const x = orbCenter.x + (targetCenter.x - orbCenter.x) * progress;
+       const y = orbCenter.y + (targetCenter.y - orbCenter.y) * progress;
+       createTrailParticle(x, y, i * 150);
+     }
+   }, 100);
+  
+  // Create pulse effect on target when note arrives
+  setTimeout(() => {
+    targetElement.style.transition = 'all 0.3s ease';
+    targetElement.style.transform = 'scale(1.15)';
+    targetElement.style.boxShadow = '0 0 30px rgba(16, 185, 129, 0.6)';
+    
+    // Create arrival burst effect
+    const burst = document.createElement('div');
+    burst.style.cssText = `
+      position: fixed;
+      left: ${targetCenter.x}px;
+      top: ${targetCenter.y}px;
+      width: 40px;
+      height: 40px;
+      border: 2px solid var(--success-color);
+      border-radius: 50%;
+      transform: translate(-50%, -50%) scale(0);
+      z-index: 2998;
+      pointer-events: none;
+      animation: burstPulse 0.6s ease-out forwards;
+    `;
+    document.body.appendChild(burst);
+    
+    // Add burst animation if not already added
+    if (!document.getElementById('burst-animation')) {
+      const style = document.createElement('style');
+      style.id = 'burst-animation';
+      style.textContent = `
+        @keyframes burstPulse {
+          0% {
+            transform: translate(-50%, -50%) scale(0);
+            opacity: 1;
+          }
+          100% {
+            transform: translate(-50%, -50%) scale(3);
+            opacity: 0;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    // Remove burst after animation
+    setTimeout(() => {
+      if (burst.parentNode) burst.parentNode.removeChild(burst);
+    }, 600);
+    
+    // Reset target element
+    setTimeout(() => {
+      targetElement.style.transform = '';
+      targetElement.style.boxShadow = '';
+    }, 300);
+    
+  }, 1300);
+  
+  // Clean up elements
+  setTimeout(() => {
+    if (noteElement.parentNode) noteElement.parentNode.removeChild(noteElement);
+    if (trail.parentNode) trail.parentNode.removeChild(trail);
+  }, 2000);
+  
+  // Update counter badge with a nice pop animation
+  const counterBadge = document.getElementById('project-counter-badge');
+  if (counterBadge && counterBadge.style.display !== 'none') {
+    setTimeout(() => {
+      counterBadge.style.transition = 'all 0.2s ease';
+      counterBadge.style.transform = 'scale(1.3)';
+      setTimeout(() => {
+        counterBadge.style.transform = 'scale(1)';
+      }, 200);
+    }, 1300);
+  }
+}
+
+// Make mini projects functions globally accessible
+window.toggleMiniProjects = toggleMiniProjects;
+
+// Make showSection globally accessible (it's defined in HTML)
+window.showSection = window.showSection || function(sectionId) {
+  document.querySelectorAll('.hidden-section').forEach(section => {
+    section.classList.remove('active');
+  });
+  document.getElementById(sectionId).classList.add('active');
+};
+
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
   // Space bar to toggle recording
@@ -449,9 +861,29 @@ document.addEventListener('keydown', (e) => {
     }
   }
   
-  // Escape to stop recording
-  if (e.code === 'Escape' && recording) {
-    stop();
+  // Escape to stop recording, close mini projects, or close sections
+  if (e.code === 'Escape') {
+    if (recording) {
+      stop();
+    } else if (miniProjectsVisible) {
+      toggleMiniProjects();
+    } else {
+      // Check if any section is active and close it
+      const activeSection = document.querySelector('.hidden-section.active');
+      if (activeSection) {
+        activeSection.classList.remove('active');
+        // Show main orb interface if closing projects section
+        if (activeSection.id === 'projects-section') {
+          document.getElementById('main-interface').style.display = 'flex';
+        }
+      }
+    }
+  }
+  
+  // P key to toggle mini projects
+  if (e.code === 'KeyP' && e.target === document.body && !recording) {
+    e.preventDefault();
+    toggleMiniProjects();
   }
 });
 
@@ -736,9 +1168,8 @@ function openProject(bucket) {
   const noteText = bucket.note_count === 1 ? 'note' : 'notes';
   document.getElementById('project-note-count').textContent = `${bucket.note_count} ${noteText}`;
   
-  // Hide buckets section and show project view
-  document.querySelector('.buckets-section').style.display = 'none';
-  document.getElementById('project-view').classList.add('active');
+  // Show project view section using the correct function
+  showSection('project-view-section');
   
   // Load notes for this project
   loadProjectNotes(bucket.side, bucket.name);
@@ -747,15 +1178,14 @@ function openProject(bucket) {
 function closeProject() {
   currentProject = null;
   
-  // Show buckets section and hide project view
-  document.querySelector('.buckets-section').style.display = 'block';
-  document.getElementById('project-view').classList.remove('active');
+  // Show projects section
+  showSection('projects-section');
   
   // Refresh buckets in case notes were modified
   loadBuckets();
 }
 
-async function loadProjectNotes(side, name) {
+async function loadProjectNotes(side, name, highlightNewNote = false) {
   const notesList = document.getElementById('notes-list');
   
   // Show loading state
@@ -789,9 +1219,13 @@ async function loadProjectNotes(side, name) {
       return;
     }
     
+    // Sort notes by creation date (newest first)
+    notes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    
     // Create note cards
     notes.forEach((note, index) => {
-      const card = createNoteCard(note);
+      const isNewNote = highlightNewNote && index === 0;
+      const card = createNoteCard(note, isNewNote);
       // Stagger animations
       card.style.animationDelay = `${index * 0.1}s`;
       notesList.appendChild(card);
@@ -808,12 +1242,15 @@ async function loadProjectNotes(side, name) {
   }
 }
 
-function createNoteCard(note) {
+function createNoteCard(note, isNew = false) {
   const card = document.createElement('div');
-  card.className = 'note-card fade-in';
+  card.className = `note-card fade-in ${isNew ? 'new-note' : ''}`;
   
   const createdDate = new Date(note.created_at).toLocaleString();
   const updatedDate = note.updated_at ? new Date(note.updated_at).toLocaleString() : null;
+  
+  const noteText = note.clean_text || '';
+  const isLongNote = noteText.length > 150;
   
   card.innerHTML = `
     <div class="note-header">
@@ -830,15 +1267,56 @@ function createNoteCard(note) {
         </button>
       </div>
     </div>
-    <div class="note-text" data-original-text="${note.clean_text}">${note.clean_text}</div>
+    <div class="note-text ${isLongNote ? 'truncated' : ''}" data-original-text="${noteText}">${noteText}</div>
+    ${isLongNote ? '<button class="note-expand-btn">Read more →</button>' : ''}
   `;
   
   // Add event listeners
   const editBtn = card.querySelector('.note-action-btn.edit');
   const deleteBtn = card.querySelector('.note-action-btn.delete');
+  const noteTextEl = card.querySelector('.note-text');
+  const expandBtn = card.querySelector('.note-expand-btn');
   
-  editBtn.addEventListener('click', () => startEditNote(card, note));
-  deleteBtn.addEventListener('click', () => deleteNote(note));
+  editBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    startEditNote(card, note);
+  });
+  
+  deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deleteNote(note);
+  });
+  
+  // Note expansion functionality
+  if (expandBtn) {
+    const handleExpansion = (e) => {
+      e.stopPropagation();
+      const isExpanded = noteTextEl.classList.contains('expanded');
+      
+      if (isExpanded) {
+        noteTextEl.classList.remove('expanded');
+        card.classList.remove('expanded');
+        expandBtn.textContent = 'Read more →';
+      } else {
+        noteTextEl.classList.add('expanded');
+        card.classList.add('expanded');
+        expandBtn.textContent = '← Show less';
+      }
+    };
+    
+    expandBtn.addEventListener('click', handleExpansion);
+    
+    // Also allow clicking on the note text to expand
+    noteTextEl.addEventListener('click', handleExpansion);
+    noteTextEl.style.cursor = 'pointer';
+  }
+  
+  // Remove new-note class after animation
+  if (isNew) {
+    setTimeout(() => {
+      card.classList.remove('new-note');
+    }, 600);
+  }
   
   return card;
 }
@@ -975,3 +1453,73 @@ async function deleteNote(note) {
 
 // Add back button functionality
 document.getElementById('back-btn').addEventListener('click', closeProject);
+
+// Audio level monitoring for orb bounce effect
+function startAudioLevelMonitoring() {
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      setupAudioAnalyser(stream);
+      animateOrbBounce();
+    })
+    .catch(err => {
+      console.error('Could not access microphone for audio monitoring:', err);
+    });
+}
+
+function setupAudioAnalyser(stream) {
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioContext.createAnalyser();
+  microphone = audioContext.createMediaStreamSource(stream);
+  
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.8;
+  microphone.connect(analyser);
+}
+
+function animateOrbBounce() {
+  if (!recording || !analyser) {
+    return;
+  }
+  
+  const dataArray = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(dataArray);
+  
+  // Calculate average audio level
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) {
+    sum += dataArray[i];
+  }
+  const average = sum / dataArray.length;
+  
+  // Normalize to 0-1 range and apply some smoothing
+  const level = Math.min(average / 128, 1);
+  
+  // Scale the orb based on audio level (1.0 to 1.15 range)
+  const scale = 1.0 + (level * 0.15);
+  btn.style.transform = `scale(${scale})`;
+  
+  // Continue animation
+  animationId = requestAnimationFrame(animateOrbBounce);
+}
+
+function stopAudioLevelMonitoring() {
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
+  
+  if (microphone) {
+    microphone.disconnect();
+    microphone = null;
+  }
+  
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+  
+  analyser = null;
+  
+  // Reset orb scale
+  btn.style.transform = '';
+}
