@@ -203,8 +203,9 @@ Transcribed text (verbatim):
     text_vec = client.models.embed_content(model=EMBED_MODEL, contents=note_info.clean).embeddings[0].values
     user_buckets[bucket_key].update_centroid(text_vec)
 
+    next_id = max((n['id'] for n in user_notes), default=0) + 1
     note = {
-        'id': len(user_notes) + 1,
+        'id': next_id,
         'created_at': datetime.now(timezone.utc).isoformat(),
         'side': chosen_side,
         'bucket': proj_name,
