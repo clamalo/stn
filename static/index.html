@@ -82,6 +82,33 @@
       font-weight: 300;
     }
 
+    .auth-forms,
+    .user-info {
+      margin-top: 1rem;
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .auth-forms input {
+      padding: 0.25rem 0.5rem;
+      background: var(--surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+    }
+
+    .auth-forms button,
+    .user-info button {
+      padding: 0.25rem 0.75rem;
+      background: var(--primary-color);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      color: white;
+    }
+
     .main-content {
       flex: 1;
       display: flex;
@@ -656,13 +683,23 @@
 <body>
   <div class="container">
     <div class="background-gradient"></div>
-    
+
     <header class="header">
       <h1>Voice Notes</h1>
       <p>Intelligent note-taking powered by AI</p>
+      <div id="auth-forms" class="auth-forms">
+        <input id="auth-username" placeholder="Username" />
+        <input id="auth-password" type="password" placeholder="Password" />
+        <button id="signup-btn">Sign Up</button>
+        <button id="login-btn">Log In</button>
+      </div>
+      <div id="user-info" class="user-info" style="display:none;">
+        Logged in as <span id="current-user"></span>
+        <button id="logout-btn">Log Out</button>
+      </div>
     </header>
 
-    <main class="main-content">
+    <main id="main-content" class="main-content" style="display:none;">
       <div class="recording-section">
         <div class="mic-container">
           <button id="mic" class="mic-button">🎙️</button>

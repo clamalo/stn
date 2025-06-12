@@ -2,9 +2,88 @@ let recording = false;
 let recognizer = null;
 const btn = document.getElementById('mic');
 const status = document.getElementById('status');
+const authForms = document.getElementById('auth-forms');
+const userInfo = document.getElementById('user-info');
+const mainContent = document.getElementById('main-content');
+const usernameSpan = document.getElementById('current-user');
+
+document.getElementById('signup-btn').addEventListener('click', signup);
+document.getElementById('login-btn').addEventListener('click', login);
+document.getElementById('logout-btn').addEventListener('click', logout);
+
+async function signup() {
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value.trim();
+  if (!username || !password) {
+    alert('Username and password required');
+    return;
+  }
+  const r = await fetch('/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const data = await r.json();
+  if (!r.ok) {
+    alert(data.error || 'Signup failed');
+    return;
+  }
+  setLoggedIn(data.username);
+}
+
+async function login() {
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value.trim();
+  if (!username || !password) {
+    alert('Username and password required');
+    return;
+  }
+  const r = await fetch('/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const data = await r.json();
+  if (!r.ok) {
+    alert(data.error || 'Login failed');
+    return;
+  }
+  setLoggedIn(data.username);
+}
+
+async function logout() {
+  await fetch('/logout', { method: 'POST' });
+  authForms.style.display = 'flex';
+  userInfo.style.display = 'none';
+  mainContent.style.display = 'none';
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+  }
+}
+
+function setLoggedIn(name) {
+  usernameSpan.textContent = name;
+  authForms.style.display = 'none';
+  userInfo.style.display = 'flex';
+  mainContent.style.display = 'block';
+  loadBuckets();
+  if (!refreshInterval) {
+    refreshInterval = setInterval(loadBuckets, 30000);
+  }
+}
+
+async function checkAuth() {
+  const r = await fetch('/current_user');
+  const data = await r.json();
+  if (data.username) {
+    setLoggedIn(data.username);
+  }
+}
 
 // Project view functionality
 let currentProject = null;
+let refreshInterval = null;
 
 btn.addEventListener('click', () => {
   if (!recording) {
@@ -270,8 +349,8 @@ document.addEventListener('keydown', (e) => {
 
 // Load buckets on page load
 document.addEventListener('DOMContentLoaded', () => {
-  loadBuckets();
-  
+  checkAuth();
+
   // Check for microphone permissions
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -285,8 +364,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Auto-refresh buckets every 30 seconds
-setInterval(loadBuckets, 30000);
 
 function startEditBucket(card, bucket) {
   const nameElement = card.querySelector('.bucket-name');
