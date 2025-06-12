@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice Notes - Smart Note Taking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-color: #6366f1;
+      --primary-hover: #5b21b6;
+      --success-color: #10b981;
+      --error-color: #ef4444;
+      --warning-color: #f59e0b;
+      --background: #0f172a;
+      --surface: #1e293b;
+      --surface-light: #334155;
+      --text-primary: #f8fafc;
+      --text-secondary: #cbd5e1;
+      --text-muted: #64748b;
+      --border-color: #475569;
+      --shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body, html {
+      height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--background);
+      color: var(--text-primary);
+      overflow-x: hidden;
+    }
+
+    .container {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .background-gradient {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--gradient);
+      opacity: 0.03;
+      z-index: -1;
+    }
+
+    .header {
+      padding: 2rem;
+      text-align: center;
+      background: rgba(30, 41, 59, 0.8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      font-weight: 300;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      gap: 3rem;
+    }
+
+    .recording-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .mic-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mic-button {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      border: none;
+      background: var(--primary-color);
+      color: white;
+      font-size: 3rem;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      z-index: 2;
+    }
+
+    .mic-button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+      transform: translateX(-100%);
+      transition: transform 0.6s;
+    }
+
+    .mic-button:hover::before {
+      transform: translateX(100%);
+    }
+
+    .mic-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 30px 60px -12px rgba(99, 102, 241, 0.4);
+    }
+
+    .mic-button:active {
+      transform: scale(0.95);
+    }
+
+    .mic-button.recording {
+      background: var(--success-color);
+      animation: pulse 2s infinite;
+    }
+
+    .mic-button.recording:hover {
+      box-shadow: 0 30px 60px -12px rgba(16, 185, 129, 0.4);
+    }
+
+    .pulse-ring {
+      position: absolute;
+      border: 2px solid var(--primary-color);
+      border-radius: 50%;
+      animation: pulse-ring 2s infinite;
+      opacity: 0;
+    }
+
+    .mic-button.recording + .pulse-ring {
+      border-color: var(--success-color);
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    @keyframes pulse-ring {
+      0% {
+        transform: scale(1);
+        opacity: 0.8;
+      }
+      100% {
+        transform: scale(1.5);
+        opacity: 0;
+      }
+    }
+
+    .status {
+      font-size: 1.2rem;
+      font-weight: 500;
+      text-align: center;
+      min-height: 2rem;
+      padding: 0.5rem 1rem;
+      border-radius: 0.75rem;
+      background: var(--surface);
+      color: var(--text-secondary);
+      transition: all 0.3s ease;
+      max-width: 400px;
+    }
+
+    .status.listening {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .status.processing {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--warning-color);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    .status.success {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .status.error {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--error-color);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .buckets-section {
+      width: 100%;
+      max-width: 800px;
+    }
+
+    .buckets-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .buckets-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .buckets-count {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .buckets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .bucket-card {
+      background: var(--surface);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      border: 1px solid var(--border-color);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .bucket-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary-color), var(--success-color));
+    }
+
+    .bucket-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--primary-color);
+    }
+
+    .bucket-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1rem;
+    }
+
+    .bucket-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 0.25rem;
+    }
+
+    .bucket-side {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .bucket-side.work {
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--primary-color);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    .bucket-side.personal {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .bucket-stats {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .bucket-actions {
+      display: flex;
+      gap: 0.5rem;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .bucket-card:hover .bucket-actions {
+      opacity: 1;
+    }
+
+    .bucket-action-btn {
+      padding: 0.375rem;
+      border: none;
+      border-radius: 0.375rem;
+      background: var(--surface-light);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+    }
+
+    .bucket-action-btn:hover {
+      background: var(--primary-color);
+      color: white;
+      transform: scale(1.05);
+    }
+
+    .bucket-action-btn.delete:hover {
+      background: var(--error-color);
+    }
+
+    .bucket-name-input {
+      background: var(--surface-light);
+      border: 1px solid var(--border-color);
+      border-radius: 0.375rem;
+      padding: 0.5rem;
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      font-weight: 600;
+      width: 100%;
+      margin-bottom: 0.5rem;
+    }
+
+    .bucket-name-input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .bucket-edit-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .bucket-edit-btn {
+      padding: 0.375rem 0.75rem;
+      border: none;
+      border-radius: 0.375rem;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .bucket-edit-btn.save {
+      background: var(--success-color);
+      color: white;
+    }
+
+    .bucket-edit-btn.save:hover {
+      background: #059669;
+    }
+
+    .bucket-edit-btn.cancel {
+      background: var(--surface-light);
+      color: var(--text-secondary);
+    }      .bucket-edit-btn.cancel:hover {
+        background: var(--border-color);
+      }
+
+      .project-view {
+        display: none;
+        width: 100%;
+        max-width: 900px;
+      }
+
+      .project-view.active {
+        display: block;
+      }
+
+      .project-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        background: var(--surface);
+        border-radius: 1rem;
+        border: 1px solid var(--border-color);
+      }
+
+      .project-info h2 {
+        font-size: 1.75rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+      }
+
+      .project-stats {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+      }
+
+      .back-btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 0.75rem;
+        background: var(--surface-light);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.9rem;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .back-btn:hover {
+        background: var(--primary-color);
+        color: white;
+        transform: translateX(-2px);
+      }
+
+      .notes-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .note-card {
+        background: var(--surface);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        border: 1px solid var(--border-color);
+        transition: all 0.3s ease;
+        position: relative;
+      }
+
+      .note-card:hover {
+        border-color: var(--primary-color);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+      }
+
+      .note-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+      }
+
+      .note-date {
+        color: var(--text-muted);
+        font-size: 0.85rem;
+      }
+
+      .note-actions {
+        display: flex;
+        gap: 0.5rem;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+
+      .note-card:hover .note-actions {
+        opacity: 1;
+      }
+
+      .note-action-btn {
+        padding: 0.375rem;
+        border: none;
+        border-radius: 0.375rem;
+        background: var(--surface-light);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.875rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+      }
+
+      .note-action-btn:hover {
+        background: var(--primary-color);
+        color: white;
+        transform: scale(1.05);
+      }
+
+      .note-action-btn.delete:hover {
+        background: var(--error-color);
+      }
+
+      .note-text {
+        color: var(--text-primary);
+        line-height: 1.6;
+        font-size: 1rem;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
+      .note-text-input {
+        width: 100%;
+        background: var(--surface-light);
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        color: var(--text-primary);
+        font-size: 1rem;
+        line-height: 1.6;
+        resize: vertical;
+        min-height: 100px;
+        font-family: inherit;
+      }
+
+      .note-text-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+      }
+
+      .note-edit-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+      }
+
+      .note-edit-btn {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+      }
+
+      .note-edit-btn.save {
+        background: var(--success-color);
+        color: white;
+      }
+
+      .note-edit-btn.save:hover {
+        background: #059669;
+      }
+
+      .note-edit-btn.cancel {
+        background: var(--surface-light);
+        color: var(--text-secondary);
+      }
+
+      .note-edit-btn.cancel:hover {
+        background: var(--border-color);
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: var(--text-muted);
+      }
+
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid var(--text-muted);
+      border-radius: 50%;
+      border-top-color: var(--primary-color);
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.5s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 768px) {
+      .header h1 {
+        font-size: 2rem;
+      }
+      
+      .main-content {
+        padding: 1rem;
+        gap: 2rem;
+      }
+      
+      .mic-button {
+        width: 120px;
+        height: 120px;
+        font-size: 2.5rem;
+      }
+      
+      .buckets-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="background-gradient"></div>
+    
+    <header class="header">
+      <h1>Voice Notes</h1>
+      <p>Intelligent note-taking powered by AI</p>
+    </header>
+
+    <main class="main-content">
+      <div class="recording-section">
+        <div class="mic-container">
+          <button id="mic" class="mic-button">🎙️</button>
+          <div class="pulse-ring"></div>
+        </div>
+        <div id="status" class="status">Click the microphone to start recording</div>
+      </div>
+
+      <section class="buckets-section">
+        <div class="buckets-header">
+          <h2 class="buckets-title">Your Projects</h2>
+          <div id="buckets-count" class="buckets-count">Loading...</div>
+        </div>
+        <div id="buckets" class="buckets-grid">
+          <div class="empty-state">
+            <div class="empty-state-icon">📁</div>
+            <p>No projects yet. Start by recording your first note!</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="project-view" class="project-view">
+        <div class="project-header">
+          <div class="project-info">
+            <h2 id="project-title">Project Name</h2>
+            <div class="project-stats">
+              <span id="project-side" class="bucket-side">work</span>
+              <span id="project-note-count">0 notes</span>
+            </div>
+          </div>
+          <button id="back-btn" class="back-btn">
+            ← Back to Projects
+          </button>
+        </div>
+        
+        <div id="notes-list" class="notes-list">
+          <div class="empty-state">
+            <div class="empty-state-icon">📝</div>
+            <p>No notes in this project yet.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
