@@ -49,8 +49,27 @@ async function logout() {
   window.location.href = '/';
 }
 
+function generateUserAvatar(name) {
+  if (!name) return '';
+  
+  // Get first letter of the name, or first two letters if it contains spaces
+  const words = name.trim().split(' ');
+  if (words.length > 1) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  } else {
+    return name[0].toUpperCase();
+  }
+}
+
 function setLoggedIn(name) {
   usernameSpan.textContent = name;
+  
+  // Generate and set avatar
+  const userAvatar = document.getElementById('user-avatar');
+  if (userAvatar) {
+    userAvatar.textContent = generateUserAvatar(name);
+  }
+  
   userInfo.style.display = 'flex';
   mainContent.style.display = 'block';
   loadBuckets();
@@ -370,6 +389,37 @@ document.addEventListener('keydown', (e) => {
 // Load buckets on page load
 document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
+
+  // User dropdown functionality
+  const userInfoDropdown = document.getElementById('user-info');
+  const profileBtn = document.getElementById('profile-btn');
+  
+  if (userInfoDropdown) {
+    // Toggle dropdown on click
+    userInfoDropdown.addEventListener('click', (e) => {
+      if (!e.target.closest('.user-dropdown')) {
+        e.preventDefault();
+        userInfoDropdown.classList.toggle('active');
+      }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!userInfoDropdown.contains(e.target)) {
+        userInfoDropdown.classList.remove('active');
+      }
+    });
+    
+    // Handle profile button (placeholder for future functionality)
+    if (profileBtn) {
+      profileBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        userInfoDropdown.classList.remove('active');
+        // TODO: Add profile functionality
+        showToast('Profile settings coming soon!', 'info');
+      });
+    }
+  }
 
   // Check for microphone permissions
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {

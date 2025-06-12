@@ -14,7 +14,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'AIzaSyC4ddJdNRvRBXx9xfQ7T5IH1zvZPNb4Goc')
+GEMINI_API_KEY = 'AIzaSyC4ddJdNRvRBXx9xfQ7T5IH1zvZPNb4Goc'
 CHAT_MODEL = 'gemini-2.0-flash'
 EMBED_MODEL = 'text-embedding-004'
 DUPLICATE_THRESHOLD = 0.80
@@ -453,4 +453,4 @@ def delete_note(note_id):
     return jsonify({'success': True})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=False, host='0.0.0.0', port=5001)

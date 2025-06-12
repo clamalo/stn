@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
     :root {
       --primary-color: #6366f1;
@@ -81,6 +82,7 @@
       position: sticky;
       top: 0;
       z-index: 100;
+      position: relative;
     }
 
     .header h1 {
@@ -186,17 +188,112 @@
     }
 
     .user-info {
-      background: var(--surface);
-      padding: 1rem 1.5rem;
-      border-radius: 1rem;
-      border: 1px solid var(--border-color);
+      position: absolute;
+      top: 1rem;
+      right: 1.5rem;
+      background: rgba(26, 26, 46, 0.6);
+      backdrop-filter: blur(10px);
+      padding: 0.5rem;
+      border-radius: 2rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
       color: var(--text-secondary);
       font-weight: 500;
+      font-size: 0.85rem;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      opacity: 0.7;
     }
 
-    .user-info span {
-      color: var(--text-primary);
+    .user-info:hover {
+      opacity: 1;
+      background: rgba(26, 26, 46, 0.8);
+      border-color: rgba(99, 102, 241, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .user-avatar {
+      width: 28px;
+      height: 28px;
+      background: var(--gradient);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 0.75rem;
       font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .user-name {
+      color: var(--text-primary);
+      font-weight: 500;
+      max-width: 100px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .user-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 0.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border-color);
+      border-radius: 0.75rem;
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(20px);
+      padding: 0.5rem;
+      min-width: 140px;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-10px);
+      transition: all 0.3s ease;
+      z-index: 1000;
+    }
+
+    .user-info.active .user-dropdown {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 0.75rem;
+      color: var(--text-secondary);
+      text-decoration: none;
+      border-radius: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+
+    .dropdown-item:hover {
+      background: var(--surface-hover);
+      color: var(--text-primary);
+    }
+
+    .dropdown-item i {
+      font-size: 0.9rem;
+      opacity: 0.8;
+    }
+
+    .dropdown-divider {
+      height: 1px;
+      background: var(--border-color);
+      margin: 0.5rem 0;
     }
 
     .main-content {
@@ -378,6 +475,7 @@
     .buckets-section {
       width: 100%;
       max-width: 800px;
+      margin: 0 auto;
     }
 
     .buckets-header {
@@ -400,8 +498,10 @@
 
     .buckets-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
       gap: 1.5rem;
+      justify-content: center;
+      width: 100%;
     }
 
     .bucket-card {
@@ -414,6 +514,8 @@
       overflow: hidden;
       box-shadow: var(--shadow-lg);
       backdrop-filter: blur(10px);
+      width: 100%;
+      justify-self: center;
     }
 
     .bucket-card::before {
@@ -825,6 +927,21 @@
         padding: 1.5rem 1rem;
       }
       
+      .user-info {
+        top: 0.75rem;
+        right: 1rem;
+        padding: 0.4rem;
+        gap: 0.5rem;
+      }
+      
+      .user-name {
+        max-width: 80px;
+      }
+      
+      .user-dropdown {
+        min-width: 120px;
+      }
+      
       .header h1 {
         font-size: 2rem;
       }
@@ -863,6 +980,7 @@
       .buckets-grid {
         grid-template-columns: 1fr;
         gap: 1rem;
+        justify-items: center;
       }
       
       .bucket-card {
@@ -888,6 +1006,23 @@
     @media (max-width: 480px) {
       .header {
         padding: 1rem;
+      }
+      
+      .user-info {
+        top: 0.5rem;
+        right: 0.75rem;
+        padding: 0.35rem;
+      }
+      
+      .user-avatar {
+        width: 24px;
+        height: 24px;
+        font-size: 0.7rem;
+      }
+      
+      .user-name {
+        max-width: 60px;
+        font-size: 0.8rem;
       }
       
       .auth-forms input {
@@ -1067,8 +1202,20 @@
       <h1>Voice Notes</h1>
       <p>Intelligent note-taking powered by AI</p>
       <div id="user-info" class="user-info" style="display:none;">
-        <span>Welcome back, <span id="current-user"></span>!</span>
-        <button id="logout-btn" type="button">Log Out</button>
+        <div class="user-avatar" id="user-avatar"></div>
+        <span class="user-name" id="current-user"></span>
+        <i class="fas fa-chevron-down" style="font-size: 0.7rem; opacity: 0.6;"></i>
+        <div class="user-dropdown">
+          <button class="dropdown-item" id="profile-btn" type="button">
+            <i class="fas fa-user"></i>
+            Profile
+          </button>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item" id="logout-btn" type="button">
+            <i class="fas fa-sign-out-alt"></i>
+            Sign Out
+          </button>
+        </div>
       </div>
     </header>
 
