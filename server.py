@@ -196,8 +196,142 @@ def list_buckets():
                 'note_count': b.note_count,
             }
             for (s, n), b in buckets.items()
+            if not (n == 'Scratchpad' and b.note_count == 0)
         ]
     })
 
+@app.route('/buckets/<side>/<name>', methods=['PUT'])
+def edit_bucket(side, name):
+    """Edit bucket name"""
+    data = request.get_json(force=True)
+    new_name = data.get('new_name', '').strip()
+    
+    if not new_name:
+        return jsonify({'error': 'new_name is required'}), 400
+    
+    if new_name == 'Scratchpad':
+        return jsonify({'error': 'Cannot rename to Scratchpad'}), 400
+    
+    old_key = (side, name)
+    new_key = (side, new_name)
+    
+    if old_key not in buckets:
+        return jsonify({'error': 'Bucket not found'}), 404
+    
+    if new_key in buckets:
+        return jsonify({'error': 'Bucket with new name already exists'}), 409
+    
+    # Update bucket
+    bucket = buckets[old_key]
+    bucket.name = new_name
+    buckets[new_key] = bucket
+    del buckets[old_key]
+    
+    # Update all notes with the old bucket name
+    for note in notes:
+        if note['side'] == side and note['bucket'] == name:
+            note['bucket'] = new_name
+    
+    # Save changes
+    BUCKETS_PATH.write_text(json.dumps({f"{s}::{n}": b.model_dump() for (s, n), b in buckets.items()}, indent=2))
+    NOTES_PATH.write_text(json.dumps(notes, indent=2))
+    
+    return jsonify({'success': True})
+
+@app.route('/buckets/<side>/<name>', methods=['DELETE'])
+def delete_bucket(side, name):
+    """Delete bucket and all its notes"""
+    if name == 'Scratchpad':
+        return jsonify({'error': 'Cannot delete Scratchpad'}), 400
+    
+    bucket_key = (side, name)
+    
+    if bucket_key not in buckets:
+        return jsonify({'error': 'Bucket not found'}), 404
+    
+    # Remove bucket
+    del buckets[bucket_key]
+    
+    # Remove all notes from this bucket
+    global notes
+    notes = [note for note in notes if not (note['side'] == side and note['bucket'] == name)]
+    
+    # Save changes
+    BUCKETS_PATH.write_text(json.dumps({f"{s}::{n}": b.model_dump() for (s, n), b in buckets.items()}, indent=2))
+    NOTES_PATH.write_text(json.dumps(notes, indent=2))
+    
+    return jsonify({'success': True})
+
+@app.route('/buckets/<side>/<name>/notes')
+def get_bucket_notes(side, name):
+    """Get all notes for a specific bucket"""
+    bucket_notes = [
+        note for note in notes 
+        if note['side'] == side and note['bucket'] == name
+    ]
+    
+    # Sort by creation date, newest first
+    bucket_notes.sort(key=lambda x: x['created_at'], reverse=True)
+    
+    return jsonify({
+        'notes': bucket_notes,
+        'bucket': {
+            'side': side,
+            'name': name,
+            'note_count': len(bucket_notes)
+        }
+    })
+
+@app.route('/notes/<int:note_id>', methods=['PUT'])
+def edit_note(note_id):
+    """Edit a note's text"""
+    data = request.get_json(force=True)
+    new_text = data.get('text', '').strip()
+    
+    if not new_text:
+        return jsonify({'error': 'text is required'}), 400
+    
+    # Find the note
+    note = None
+    for n in notes:
+        if n['id'] == note_id:
+            note = n
+            break
+    
+    if not note:
+        return jsonify({'error': 'Note not found'}), 404
+    
+    # Update the note
+    note['clean_text'] = new_text
+    note['updated_at'] = datetime.now(timezone.utc).isoformat()
+    
+    # Save changes
+    NOTES_PATH.write_text(json.dumps(notes, indent=2))
+    
+    return jsonify({'success': True, 'note': note})
+
+@app.route('/notes/<int:note_id>', methods=['DELETE'])
+def delete_note(note_id):
+    """Delete a note"""
+    global notes
+    
+    # Find and remove the note
+    original_count = len(notes)
+    notes = [note for note in notes if note['id'] != note_id]
+    
+    if len(notes) == original_count:
+        return jsonify({'error': 'Note not found'}), 404
+    
+    # Update bucket note count
+    # We need to recalculate all bucket counts since we don't know which bucket the note was in
+    for bucket in buckets.values():
+        bucket.note_count = len([n for n in notes if n['side'] == bucket.side and n['bucket'] == bucket.name])
+    
+    # Save changes
+    NOTES_PATH.write_text(json.dumps(notes, indent=2))
+    BUCKETS_PATH.write_text(json.dumps({f"{s}::{n}": b.model_dump() for (s, n), b in buckets.items()}, indent=2))
+    
+    return jsonify({'success': True})
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)
