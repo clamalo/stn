@@ -1,5 +1,7 @@
 let recording = false;
 let recognizer = null;
+let mediaRecorder = null;
+let audioChunks = [];
 const btn = document.getElementById('mic');
 const status = document.getElementById('status');
 const userInfo = document.getElementById('user-info');
@@ -120,15 +122,18 @@ function updateStatus(message, type = '') {
 }
 
 function start() {
-  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+  if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognizer = new SR();
+    recognizer.lang = 'en-US';
+    recognizer.interimResults = false;
+  } else if (navigator.mediaDevices && window.MediaRecorder) {
+    startFallbackRecording();
+    return;
+  } else {
     updateStatus('Speech recognition not supported in this browser', 'error');
     return;
   }
-  
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognizer = new SR();
-  recognizer.lang = 'en-US';
-  recognizer.interimResults = false;
   
   recognizer.onresult = (e) => {
     const text = e.results[0][0].transcript;
@@ -215,6 +220,62 @@ function start() {
   }
 }
 
+function startFallbackRecording() {
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      const formData = new FormData();
+      formData.append('audio', blob, 'note.webm');
+
+      updateStatus('Processing audio...', 'processing');
+      fetch('/transcribe', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.text) throw new Error('No transcript');
+          updateStatus(`Processing: "${data.text}"`, 'processing');
+          return fetch('/process_note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: data.text })
+          });
+        })
+        .then(r => r.json())
+        .then(data => {
+          updateStatus(`✅ Saved to ${data.bucket}`, 'success');
+          showToast(`Note saved to ${data.bucket} project!`, 'success');
+          loadBuckets();
+          setTimeout(() => {
+            updateStatus('Click the microphone to start recording');
+          }, 5000);
+        })
+        .catch(err => {
+          console.error(err);
+          updateStatus('❌ Failed to save note', 'error');
+          setTimeout(() => {
+            updateStatus('Click the microphone to start recording');
+          }, 5000);
+        });
+    };
+
+    recording = true;
+    btn.classList.add('recording');
+    btn.textContent = '🛑';
+    btn.setAttribute('aria-label', 'Stop voice recording');
+    btn.title = 'Click to stop recording (or press Escape)';
+    updateStatus('🎤 Listening... Speak now', 'listening');
+
+    mediaRecorder.start();
+  }).catch(err => {
+    console.error(err);
+    updateStatus('Microphone access denied', 'error');
+  });
+}
+
 function stop() {
   recording = false;
   btn.classList.remove('recording');
@@ -227,6 +288,14 @@ function stop() {
       recognizer.stop();
     } catch (error) {
       console.error('Error stopping recognition:', error);
+    }
+  }
+
+  if (mediaRecorder) {
+    try {
+      mediaRecorder.stop();
+    } catch (error) {
+      console.error('Error stopping recorder:', error);
     }
   }
 }

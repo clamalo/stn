@@ -13,6 +13,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
+import speech_recognition as sr
+import subprocess
+import tempfile
 
 GEMINI_API_KEY = 'AIzaSyC4ddJdNRvRBXx9xfQ7T5IH1zvZPNb4Goc'
 CHAT_MODEL = 'gemini-2.0-flash'
@@ -281,6 +284,41 @@ def process_note_route():
         return jsonify({'error': 'no text'}), 400
     note = process_text(text, username)
     return jsonify(note)
+
+# Fallback transcription route for browsers without SpeechRecognition
+@app.route('/transcribe', methods=['POST'])
+@login_required
+def transcribe_audio_route():
+    if 'audio' not in request.files:
+        return jsonify({'error': 'no audio'}), 400
+
+    audio_file = request.files['audio']
+
+    with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as src:
+        audio_file.save(src.name)
+        src_path = src.name
+
+    wav_path = src_path + '.wav'
+    # Convert to wav using ffmpeg
+    cmd = ['ffmpeg', '-y', '-i', src_path, wav_path]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        os.remove(src_path)
+        return jsonify({'error': 'ffmpeg failed'}), 500
+
+    recognizer = sr.Recognizer()
+    try:
+        with sr.AudioFile(wav_path) as source:
+            audio_data = recognizer.record(source)
+        text = recognizer.recognize_google(audio_data)
+    except Exception as exc:
+        os.remove(src_path)
+        os.remove(wav_path)
+        return jsonify({'error': str(exc)}), 500
+
+    os.remove(src_path)
+    os.remove(wav_path)
+    return jsonify({'text': text})
 
 @app.route('/buckets')
 @login_required
