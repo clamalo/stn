@@ -222,7 +222,9 @@ Transcribed text (verbatim):
 # Routes
 @app.route('/')
 def index():
-    return send_from_directory(app.static_folder, 'index.html')
+    if session.get('user'):
+        return send_from_directory(app.static_folder, 'index.html')
+    return send_from_directory(app.static_folder, 'login.html')
 
 
 @app.route('/signup', methods=['POST'])

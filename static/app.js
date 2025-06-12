@@ -2,16 +2,10 @@ let recording = false;
 let recognizer = null;
 const btn = document.getElementById('mic');
 const status = document.getElementById('status');
-const authForms = document.getElementById('auth-forms');
 const userInfo = document.getElementById('user-info');
 const mainContent = document.getElementById('main-content');
 const usernameSpan = document.getElementById('current-user');
 
-// Add loading state management
-let isLoading = false;
-
-document.getElementById('signup-btn').addEventListener('click', signup);
-document.getElementById('login-btn').addEventListener('click', login);
 document.getElementById('logout-btn').addEventListener('click', logout);
 
 // Enhanced notification system
@@ -45,95 +39,18 @@ function setLoadingState(element, isLoading) {
   }
 }
 
-async function signup() {
-  const username = document.getElementById('auth-username').value.trim();
-  const password = document.getElementById('auth-password').value.trim();
-  
-  if (!username || !password) {
-    showToast('Username and password are required', 'error');
-    return;
-  }
-
-  if (password.length < 6) {
-    showToast('Password must be at least 6 characters long', 'error');
-    return;
-  }
-
-  const signupBtn = document.getElementById('signup-btn');
-  setLoadingState(signupBtn, true);
-  signupBtn.textContent = 'Signing Up...';
-
-  try {
-    const r = await fetch('/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    const data = await r.json();
-    
-    if (!r.ok) {
-      throw new Error(data.error || 'Signup failed');
-    }
-    
-    showToast(`Welcome ${data.username}! Account created successfully.`, 'success');
-    setLoggedIn(data.username);
-  } catch (error) {
-    showToast(error.message, 'error');
-  } finally {
-    setLoadingState(signupBtn, false);
-    signupBtn.textContent = 'Sign Up';
-  }
-}
-
-async function login() {
-  const username = document.getElementById('auth-username').value.trim();
-  const password = document.getElementById('auth-password').value.trim();
-  
-  if (!username || !password) {
-    showToast('Username and password are required', 'error');
-    return;
-  }
-
-  const loginBtn = document.getElementById('login-btn');
-  setLoadingState(loginBtn, true);
-  loginBtn.textContent = 'Logging In...';
-
-  try {
-    const r = await fetch('/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    const data = await r.json();
-    
-    if (!r.ok) {
-      throw new Error(data.error || 'Login failed');
-    }
-    
-    showToast(`Welcome back, ${data.username}!`, 'success');
-    setLoggedIn(data.username);
-  } catch (error) {
-    showToast(error.message, 'error');
-  } finally {
-    setLoadingState(loginBtn, false);
-    loginBtn.textContent = 'Log In';
-  }
-}
 
 async function logout() {
   await fetch('/logout', { method: 'POST' });
-  authForms.style.display = 'flex';
-  userInfo.style.display = 'none';
-  mainContent.style.display = 'none';
   if (refreshInterval) {
     clearInterval(refreshInterval);
     refreshInterval = null;
   }
+  window.location.href = '/';
 }
 
 function setLoggedIn(name) {
   usernameSpan.textContent = name;
-  authForms.style.display = 'none';
   userInfo.style.display = 'flex';
   mainContent.style.display = 'block';
   loadBuckets();
@@ -147,6 +64,8 @@ async function checkAuth() {
   const data = await r.json();
   if (data.username) {
     setLoggedIn(data.username);
+  } else {
+    window.location.href = '/';
   }
 }
 
@@ -451,34 +370,6 @@ document.addEventListener('keydown', (e) => {
 // Load buckets on page load
 document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
-
-  // Add form validation and Enter key handling
-  const usernameInput = document.getElementById('auth-username');
-  const passwordInput = document.getElementById('auth-password');
-  
-  // Handle Enter key in auth forms
-  const handleAuthKeydown = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      // Try login first, then signup if no account exists
-      login();
-    }
-  };
-  
-  usernameInput.addEventListener('keydown', handleAuthKeydown);
-  passwordInput.addEventListener('keydown', handleAuthKeydown);
-  
-  // Real-time validation feedback
-  passwordInput.addEventListener('input', (e) => {
-    const password = e.target.value;
-    if (password.length > 0 && password.length < 6) {
-      e.target.style.borderColor = 'var(--error-color)';
-      e.target.title = 'Password must be at least 6 characters';
-    } else {
-      e.target.style.borderColor = '';
-      e.target.title = '';
-    }
-  });
 
   // Check for microphone permissions
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
