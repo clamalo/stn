@@ -7,48 +7,117 @@ const userInfo = document.getElementById('user-info');
 const mainContent = document.getElementById('main-content');
 const usernameSpan = document.getElementById('current-user');
 
+// Add loading state management
+let isLoading = false;
+
 document.getElementById('signup-btn').addEventListener('click', signup);
 document.getElementById('login-btn').addEventListener('click', login);
 document.getElementById('logout-btn').addEventListener('click', logout);
 
+// Enhanced notification system
+function showToast(message, type = 'info', duration = 5000) {
+  // Remove existing toast
+  const existingToast = document.querySelector('.toast');
+  if (existingToast) {
+    existingToast.remove();
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.animation = 'slideInRight 0.3s ease-out reverse';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+function setLoadingState(element, isLoading) {
+  if (isLoading) {
+    element.disabled = true;
+    element.style.opacity = '0.7';
+    element.style.cursor = 'not-allowed';
+  } else {
+    element.disabled = false;
+    element.style.opacity = '1';
+    element.style.cursor = 'pointer';
+  }
+}
+
 async function signup() {
   const username = document.getElementById('auth-username').value.trim();
   const password = document.getElementById('auth-password').value.trim();
+  
   if (!username || !password) {
-    alert('Username and password required');
+    showToast('Username and password are required', 'error');
     return;
   }
-  const r = await fetch('/signup', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
-  });
-  const data = await r.json();
-  if (!r.ok) {
-    alert(data.error || 'Signup failed');
+
+  if (password.length < 6) {
+    showToast('Password must be at least 6 characters long', 'error');
     return;
   }
-  setLoggedIn(data.username);
+
+  const signupBtn = document.getElementById('signup-btn');
+  setLoadingState(signupBtn, true);
+  signupBtn.textContent = 'Signing Up...';
+
+  try {
+    const r = await fetch('/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await r.json();
+    
+    if (!r.ok) {
+      throw new Error(data.error || 'Signup failed');
+    }
+    
+    showToast(`Welcome ${data.username}! Account created successfully.`, 'success');
+    setLoggedIn(data.username);
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    setLoadingState(signupBtn, false);
+    signupBtn.textContent = 'Sign Up';
+  }
 }
 
 async function login() {
   const username = document.getElementById('auth-username').value.trim();
   const password = document.getElementById('auth-password').value.trim();
+  
   if (!username || !password) {
-    alert('Username and password required');
+    showToast('Username and password are required', 'error');
     return;
   }
-  const r = await fetch('/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
-  });
-  const data = await r.json();
-  if (!r.ok) {
-    alert(data.error || 'Login failed');
-    return;
+
+  const loginBtn = document.getElementById('login-btn');
+  setLoadingState(loginBtn, true);
+  loginBtn.textContent = 'Logging In...';
+
+  try {
+    const r = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await r.json();
+    
+    if (!r.ok) {
+      throw new Error(data.error || 'Login failed');
+    }
+    
+    showToast(`Welcome back, ${data.username}!`, 'success');
+    setLoggedIn(data.username);
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    setLoadingState(loginBtn, false);
+    loginBtn.textContent = 'Log In';
   }
-  setLoggedIn(data.username);
 }
 
 async function logout() {
@@ -99,6 +168,17 @@ function updateStatus(message, type = '') {
   if (type) {
     status.classList.add(type);
   }
+  
+  // Add accessibility announcement
+  status.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+  
+  // Add visual feedback for different states
+  if (type === 'listening') {
+    status.innerHTML = `
+      <div class="loading-spinner" style="width: 1rem; height: 1rem; margin-right: 0.5rem;"></div>
+      ${message}
+    `;
+  }
 }
 
 function start() {
@@ -116,6 +196,9 @@ function start() {
     const text = e.results[0][0].transcript;
     updateStatus(`Processing: "${text}"`, 'processing');
     
+    // Provide better user feedback
+    showToast('Voice captured! Processing your note...', 'info', 3000);
+    
     fetch('/process_note', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -124,21 +207,23 @@ function start() {
     .then(r => r.json())
     .then(data => {
       updateStatus(`✅ Saved to ${data.bucket}`, 'success');
+      showToast(`Note saved to ${data.bucket} project!`, 'success');
       loadBuckets();
       
-      // Clear status after 3 seconds
+      // Clear status after 5 seconds
       setTimeout(() => {
         updateStatus('Click the microphone to start recording');
-      }, 3000);
+      }, 5000);
     })
     .catch(err => {
       console.error(err);
       updateStatus('❌ Failed to save note', 'error');
+      showToast('Failed to save your note. Please try again.', 'error');
       
-      // Clear status after 3 seconds
+      // Clear status after 5 seconds
       setTimeout(() => {
         updateStatus('Click the microphone to start recording');
-      }, 3000);
+      }, 5000);
     });
   };
   
@@ -179,6 +264,8 @@ function start() {
   recording = true;
   btn.classList.add('recording');
   btn.textContent = '🛑';
+  btn.setAttribute('aria-label', 'Stop voice recording');
+  btn.title = 'Click to stop recording (or press Escape)';
   updateStatus('🎤 Listening... Speak now', 'listening');
   
   try {
@@ -194,6 +281,8 @@ function stop() {
   recording = false;
   btn.classList.remove('recording');
   btn.textContent = '🎙️';
+  btn.setAttribute('aria-label', 'Start voice recording');
+  btn.title = 'Click to start recording (or press Space)';
   
   if (recognizer) {
     try {
@@ -207,11 +296,15 @@ function stop() {
 function createBucketCard(bucket) {
   const card = document.createElement('div');
   card.className = 'bucket-card fade-in';
+  card.setAttribute('role', 'gridcell');
+  card.setAttribute('tabindex', '0');
+  card.setAttribute('aria-label', `${bucket.name} project, ${bucket.note_count} notes, ${bucket.side} category`);
   
   const sideClass = bucket.side.toLowerCase();
   const noteText = bucket.note_count === 1 ? 'note' : 'notes';
   const canEdit = bucket.name !== 'Scratchpad';
   
+  // Enhanced card content with better visual hierarchy
   card.innerHTML = `
     <div class="bucket-header">
       <div>
@@ -224,10 +317,10 @@ function createBucketCard(bucket) {
         <span class="bucket-side ${sideClass}">${bucket.side}</span>
         ${canEdit ? `
           <div class="bucket-actions">
-            <button class="bucket-action-btn edit" title="Edit project name">
+            <button class="bucket-action-btn edit" title="Edit project name" aria-label="Edit ${bucket.name} project name">
               ✏️
             </button>
-            <button class="bucket-action-btn delete" title="Delete project">
+            <button class="bucket-action-btn delete" title="Delete project" aria-label="Delete ${bucket.name} project">
               🗑️
             </button>
           </div>
@@ -236,13 +329,21 @@ function createBucketCard(bucket) {
     </div>
   `;
   
-  // Add click handler to open project
-  card.addEventListener('click', (e) => {
+  // Enhanced click handling
+  const handleCardClick = (e) => {
     // Don't open project if clicking on action buttons
     if (e.target.closest('.bucket-actions') || e.target.closest('.bucket-edit-actions')) {
       return;
     }
     openProject(bucket);
+  };
+
+  card.addEventListener('click', handleCardClick);
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleCardClick(e);
+    }
   });
   
   // Add cursor pointer style
@@ -351,15 +452,45 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
 
+  // Add form validation and Enter key handling
+  const usernameInput = document.getElementById('auth-username');
+  const passwordInput = document.getElementById('auth-password');
+  
+  // Handle Enter key in auth forms
+  const handleAuthKeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // Try login first, then signup if no account exists
+      login();
+    }
+  };
+  
+  usernameInput.addEventListener('keydown', handleAuthKeydown);
+  passwordInput.addEventListener('keydown', handleAuthKeydown);
+  
+  // Real-time validation feedback
+  passwordInput.addEventListener('input', (e) => {
+    const password = e.target.value;
+    if (password.length > 0 && password.length < 6) {
+      e.target.style.borderColor = 'var(--error-color)';
+      e.target.title = 'Password must be at least 6 characters';
+    } else {
+      e.target.style.borderColor = '';
+      e.target.title = '';
+    }
+  });
+
   // Check for microphone permissions
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(() => {
         console.log('Microphone permission granted');
+        showToast('Microphone access granted! You can now record voice notes.', 'success', 3000);
       })
       .catch((err) => {
         console.warn('Microphone permission denied:', err);
         updateStatus('Microphone permission needed for voice recording', 'error');
+        showToast('Please allow microphone access to record voice notes.', 'error', 8000);
       });
   }
 });
@@ -419,16 +550,11 @@ function startEditBucket(card, bucket) {
       
       // Success - reload buckets
       loadBuckets();
-      updateStatus(`✅ Renamed project to "${newName}"`, 'success');
-      
-      // Clear status after 3 seconds
-      setTimeout(() => {
-        updateStatus('Click the microphone to start recording');
-      }, 3000);
+      showToast(`Project renamed to "${newName}"`, 'success');
       
     } catch (error) {
       console.error('Error renaming bucket:', error);
-      alert(`Failed to rename project: ${error.message}`);
+      showToast(`Failed to rename project: ${error.message}`, 'error');
       cancelEdit();
     }
   };
@@ -456,12 +582,14 @@ function startEditBucket(card, bucket) {
 }
 
 async function deleteBucket(bucket) {
-  const confirmMessage = `Are you sure you want to delete the project "${bucket.name}"?\n\nThis will also delete all ${bucket.note_count} notes in this project. This action cannot be undone.`;
+  const result = await showConfirmDialog(
+    `Delete "${bucket.name}" project?`,
+    `This will permanently delete the project "${bucket.name}" and all ${bucket.note_count} notes inside it. This action cannot be undone.`,
+    'Delete Project'
+  );
   
-  if (!confirm(confirmMessage)) {
-    return;
-  }
-  
+  if (!result) return;
+
   try {
     const response = await fetch(`/buckets/${bucket.side}/${encodeURIComponent(bucket.name)}`, {
       method: 'DELETE'
@@ -475,17 +603,116 @@ async function deleteBucket(bucket) {
     
     // Success - reload buckets
     loadBuckets();
-    updateStatus(`✅ Deleted project "${bucket.name}"`, 'success');
-    
-    // Clear status after 3 seconds
-    setTimeout(() => {
-      updateStatus('Click the microphone to start recording');
-    }, 3000);
+    showToast(`Project "${bucket.name}" deleted successfully`, 'success');
     
   } catch (error) {
     console.error('Error deleting bucket:', error);
-    alert(`Failed to delete project: ${error.message}`);
+    showToast(`Failed to delete project: ${error.message}`, 'error');
   }
+}
+
+// Enhanced confirmation dialog
+function showConfirmDialog(title, message, confirmText = 'Confirm') {
+  return new Promise((resolve) => {
+    const dialog = document.createElement('div');
+    dialog.className = 'confirm-dialog-overlay';
+    dialog.innerHTML = `
+      <div class="confirm-dialog">
+        <h3>${title}</h3>
+        <p>${message}</p>
+        <div class="confirm-dialog-actions">
+          <button class="confirm-btn cancel">Cancel</button>
+          <button class="confirm-btn delete">${confirmText}</button>
+        </div>
+      </div>
+    `;
+    
+    // Add styles
+    dialog.style.cssText = `
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(5px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1001; animation: fadeIn 0.2s ease-out;
+    `;
+    
+    const dialogBox = dialog.querySelector('.confirm-dialog');
+    dialogBox.style.cssText = `
+      background: var(--surface); border-radius: 1rem; padding: 2rem;
+      border: 2px solid var(--border-color); box-shadow: var(--shadow);
+      max-width: 400px; width: 90vw; animation: scaleIn 0.2s ease-out;
+    `;
+    
+    const h3 = dialogBox.querySelector('h3');
+    h3.style.cssText = `
+      color: var(--text-primary); margin: 0 0 1rem 0;
+      font-size: 1.25rem; font-weight: 600;
+    `;
+    
+    const p = dialogBox.querySelector('p');
+    p.style.cssText = `
+      color: var(--text-secondary); margin: 0 0 2rem 0;
+      line-height: 1.5; font-size: 0.95rem;
+    `;
+    
+    const actions = dialogBox.querySelector('.confirm-dialog-actions');
+    actions.style.cssText = `
+      display: flex; gap: 1rem; justify-content: flex-end;
+    `;
+    
+    const buttons = actions.querySelectorAll('.confirm-btn');
+    buttons.forEach(btn => {
+      btn.style.cssText = `
+        padding: 0.75rem 1.5rem; border: none; border-radius: 0.5rem;
+        cursor: pointer; font-weight: 600; transition: all 0.2s ease;
+      `;
+    });
+    
+    const cancelBtn = actions.querySelector('.cancel');
+    cancelBtn.style.cssText += `
+      background: var(--surface-light); color: var(--text-secondary);
+    `;
+    
+    const deleteBtn = actions.querySelector('.delete');
+    deleteBtn.style.cssText += `
+      background: var(--error-color); color: white;
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    // Add animation styles
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes scaleIn {
+        from { transform: scale(0.9); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    // Event listeners
+    cancelBtn.addEventListener('click', () => {
+      document.body.removeChild(dialog);
+      document.head.removeChild(style);
+      resolve(false);
+    });
+    
+    deleteBtn.addEventListener('click', () => {
+      document.body.removeChild(dialog);
+      document.head.removeChild(style);
+      resolve(true);
+    });
+    
+    // ESC key to cancel
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        document.removeEventListener('keydown', handleKeydown);
+        document.body.removeChild(dialog);
+        document.head.removeChild(style);
+        resolve(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+  });
 }
 
 function openProject(bucket) {
@@ -667,16 +894,11 @@ function startEditNote(card, note) {
       
       // Success - reload notes
       loadProjectNotes(currentProject.side, currentProject.name);
-      updateStatus('✅ Note updated successfully', 'success');
-      
-      // Clear status after 3 seconds
-      setTimeout(() => {
-        updateStatus('Click the microphone to start recording');
-      }, 3000);
+      showToast('Note updated successfully', 'success');
       
     } catch (error) {
       console.error('Error updating note:', error);
-      alert(`Failed to update note: ${error.message}`);
+      showToast(`Failed to update note: ${error.message}`, 'error');
       cancelEdit();
     }
   };
@@ -705,12 +927,14 @@ function startEditNote(card, note) {
 }
 
 async function deleteNote(note) {
-  const confirmMessage = `Are you sure you want to delete this note?\n\nThis action cannot be undone.`;
+  const result = await showConfirmDialog(
+    'Delete Note?',
+    'This note will be permanently deleted. This action cannot be undone.',
+    'Delete Note'
+  );
   
-  if (!confirm(confirmMessage)) {
-    return;
-  }
-  
+  if (!result) return;
+
   try {
     const response = await fetch(`/notes/${note.id}`, {
       method: 'DELETE'
@@ -724,7 +948,7 @@ async function deleteNote(note) {
     
     // Success - reload notes
     loadProjectNotes(currentProject.side, currentProject.name);
-    updateStatus('✅ Note deleted successfully', 'success');
+    showToast('Note deleted successfully', 'success');
     
     // Update current project note count
     if (currentProject) {
@@ -733,14 +957,9 @@ async function deleteNote(note) {
       document.getElementById('project-note-count').textContent = `${currentProject.note_count} ${noteText}`;
     }
     
-    // Clear status after 3 seconds
-    setTimeout(() => {
-      updateStatus('Click the microphone to start recording');
-    }, 3000);
-    
   } catch (error) {
     console.error('Error deleting note:', error);
-    alert(`Failed to delete note: ${error.message}`);
+    showToast(`Failed to delete note: ${error.message}`, 'error');
   }
 }
 

@@ -10,20 +10,26 @@
   <style>
     :root {
       --primary-color: #6366f1;
-      --primary-hover: #5b21b6;
+      --primary-hover: #4f46e5;
+      --primary-light: #818cf8;
       --success-color: #10b981;
       --error-color: #ef4444;
       --warning-color: #f59e0b;
-      --background: #0f172a;
-      --surface: #1e293b;
-      --surface-light: #334155;
-      --text-primary: #f8fafc;
-      --text-secondary: #cbd5e1;
-      --text-muted: #64748b;
-      --border-color: #475569;
-      --shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-      --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-      --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --background: #0f0f23;
+      --surface: #1a1a2e;
+      --surface-light: #252547;
+      --surface-hover: #2a2a4a;
+      --text-primary: #ffffff;
+      --text-secondary: #e2e8f0;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+      --border-focus: #6366f1;
+      --shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+      --shadow-button: 0 8px 16px -4px rgba(99, 102, 241, 0.3);
+      --gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+      --card-gradient: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+      --accent-gradient: linear-gradient(90deg, #6366f1, #8b5cf6, #a855f7);
     }
 
     * {
@@ -38,6 +44,8 @@
       background: var(--background);
       color: var(--text-primary);
       overflow-x: hidden;
+      scroll-behavior: smooth;
+      line-height: 1.6;
     }
 
     .container {
@@ -54,59 +62,141 @@
       width: 100%;
       height: 100%;
       background: var(--gradient);
-      opacity: 0.03;
+      opacity: 0.05;
       z-index: -1;
+      animation: shimmer 20s ease-in-out infinite alternate;
+    }
+
+    @keyframes shimmer {
+      0% { opacity: 0.03; }
+      100% { opacity: 0.08; }
     }
 
     .header {
       padding: 2rem;
       text-align: center;
-      background: rgba(30, 41, 59, 0.8);
-      backdrop-filter: blur(10px);
+      background: rgba(26, 26, 46, 0.9);
+      backdrop-filter: blur(20px);
       border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
 
     .header h1 {
-      font-size: 2.5rem;
+      font-size: clamp(2rem, 4vw, 2.5rem);
       font-weight: 700;
       margin-bottom: 0.5rem;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: var(--accent-gradient);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
+      text-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
+      animation: glow 3s ease-in-out infinite alternate;
+    }
+
+    @keyframes glow {
+      0% { filter: brightness(1); }
+      100% { filter: brightness(1.1); }
     }
 
     .header p {
       color: var(--text-secondary);
       font-size: 1.1rem;
       font-weight: 300;
+      margin-bottom: 1.5rem;
     }
 
     .auth-forms,
     .user-info {
       margin-top: 1rem;
       display: flex;
-      gap: 0.5rem;
+      gap: 1rem;
       justify-content: center;
       align-items: center;
+      flex-wrap: wrap;
     }
 
     .auth-forms input {
-      padding: 0.25rem 0.5rem;
+      padding: 0.75rem 1rem;
       background: var(--surface);
       color: var(--text-primary);
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
+      border: 2px solid var(--border-color);
+      border-radius: 0.75rem;
+      font-size: 0.95rem;
+      transition: all 0.3s ease;
+      min-width: 200px;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .auth-forms input:focus {
+      outline: none;
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1), inset 0 2px 4px rgba(0, 0, 0, 0.1);
+      transform: translateY(-1px);
+    }
+
+    .auth-forms input::placeholder {
+      color: var(--text-muted);
     }
 
     .auth-forms button,
     .user-info button {
-      padding: 0.25rem 0.75rem;
+      padding: 0.75rem 1.5rem;
       background: var(--primary-color);
       border: none;
-      border-radius: 4px;
+      border-radius: 0.75rem;
       cursor: pointer;
       color: white;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: var(--shadow-button);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .auth-forms button::before,
+    .user-info button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.6s;
+    }
+
+    .auth-forms button:hover::before,
+    .user-info button:hover::before {
+      left: 100%;
+    }
+
+    .auth-forms button:hover,
+    .user-info button:hover {
+      background: var(--primary-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px -6px rgba(99, 102, 241, 0.4);
+    }
+
+    .auth-forms button:active,
+    .user-info button:active {
+      transform: translateY(0);
+    }
+
+    .user-info {
+      background: var(--surface);
+      padding: 1rem 1.5rem;
+      border-radius: 1rem;
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .user-info span {
+      color: var(--text-primary);
+      font-weight: 600;
     }
 
     .main-content {
@@ -134,19 +224,20 @@
     }
 
     .mic-button {
-      width: 140px;
-      height: 140px;
+      width: 160px;
+      height: 160px;
       border-radius: 50%;
       border: none;
-      background: var(--primary-color);
-      color: white;
-      font-size: 3rem;
+      background: var(--card-gradient);
+      color: var(--text-primary);
+      font-size: 4rem;
       cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
       position: relative;
       overflow: hidden;
-      box-shadow: var(--shadow);
+      box-shadow: var(--shadow), 0 0 40px rgba(99, 102, 241, 0.3);
       z-index: 2;
+      border: 3px solid var(--primary-color);
     }
 
     .mic-button::before {
@@ -156,39 +247,65 @@
       left: 0;
       right: 0;
       bottom: 0;
+      background: var(--accent-gradient);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      border-radius: 50%;
+    }
+
+    .mic-button::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 80%;
+      height: 80%;
+      border-radius: 50%;
       background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
-      transform: translateX(-100%);
+      transform: translate(-50%, -50%) translateX(-100%);
       transition: transform 0.6s;
     }
 
     .mic-button:hover::before {
-      transform: translateX(100%);
+      opacity: 1;
+    }
+
+    .mic-button:hover::after {
+      transform: translate(-50%, -50%) translateX(100%);
     }
 
     .mic-button:hover {
-      transform: scale(1.05);
-      box-shadow: 0 30px 60px -12px rgba(99, 102, 241, 0.4);
+      transform: scale(1.1) rotate(5deg);
+      box-shadow: var(--shadow), 0 0 60px rgba(99, 102, 241, 0.5);
+      border-color: var(--primary-light);
     }
 
     .mic-button:active {
-      transform: scale(0.95);
+      transform: scale(1.05) rotate(2deg);
     }
 
     .mic-button.recording {
-      background: var(--success-color);
-      animation: pulse 2s infinite;
+      background: linear-gradient(145deg, #10b981, #059669);
+      border-color: var(--success-color);
+      animation: pulse 2s infinite, rotate 20s linear infinite;
     }
 
     .mic-button.recording:hover {
-      box-shadow: 0 30px 60px -12px rgba(16, 185, 129, 0.4);
+      box-shadow: var(--shadow), 0 0 60px rgba(16, 185, 129, 0.5);
+    }
+
+    @keyframes rotate {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
 
     .pulse-ring {
       position: absolute;
-      border: 2px solid var(--primary-color);
+      border: 3px solid var(--primary-color);
       border-radius: 50%;
       animation: pulse-ring 2s infinite;
       opacity: 0;
+      pointer-events: none;
     }
 
     .mic-button.recording + .pulse-ring {
@@ -197,16 +314,16 @@
 
     @keyframes pulse {
       0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
+      50% { transform: scale(1.1); }
     }
 
     @keyframes pulse-ring {
       0% {
         transform: scale(1);
-        opacity: 0.8;
+        opacity: 1;
       }
       100% {
-        transform: scale(1.5);
+        transform: scale(1.8);
         opacity: 0;
       }
     }
@@ -215,37 +332,47 @@
       font-size: 1.2rem;
       font-weight: 500;
       text-align: center;
-      min-height: 2rem;
-      padding: 0.5rem 1rem;
-      border-radius: 0.75rem;
+      min-height: 3rem;
+      padding: 1rem 2rem;
+      border-radius: 1rem;
       background: var(--surface);
       color: var(--text-secondary);
       transition: all 0.3s ease;
-      max-width: 400px;
+      max-width: 500px;
+      border: 2px solid var(--border-color);
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
     }
 
     .status.listening {
       background: rgba(16, 185, 129, 0.1);
       color: var(--success-color);
-      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-color: var(--success-color);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
     }
 
     .status.processing {
       background: rgba(245, 158, 11, 0.1);
       color: var(--warning-color);
-      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-color: var(--warning-color);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
     }
 
     .status.success {
       background: rgba(16, 185, 129, 0.1);
       color: var(--success-color);
-      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-color: var(--success-color);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
     }
 
     .status.error {
       background: rgba(239, 68, 68, 0.1);
       color: var(--error-color);
-      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-color: var(--error-color);
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
     }
 
     .buckets-section {
@@ -278,13 +405,15 @@
     }
 
     .bucket-card {
-      background: var(--surface);
-      border-radius: 1rem;
-      padding: 1.5rem;
-      border: 1px solid var(--border-color);
-      transition: all 0.3s ease;
+      background: var(--card-gradient);
+      border-radius: 1.5rem;
+      padding: 2rem;
+      border: 2px solid var(--border-color);
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
       position: relative;
       overflow: hidden;
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(10px);
     }
 
     .bucket-card::before {
@@ -293,14 +422,25 @@
       top: 0;
       left: 0;
       right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--primary-color), var(--success-color));
+      height: 4px;
+      background: var(--accent-gradient);
+      transform: scaleX(0);
+      transition: transform 0.3s ease;
+    }
+
+    .bucket-card:hover::before {
+      transform: scaleX(1);
     }
 
     .bucket-card:hover {
-      transform: translateY(-4px);
-      box-shadow: var(--shadow-lg);
+      transform: translateY(-8px) scale(1.02);
+      box-shadow: var(--shadow), 0 25px 50px -12px rgba(99, 102, 241, 0.3);
       border-color: var(--primary-color);
+    }
+
+    .bucket-card:focus-within {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
     }
 
     .bucket-header {
@@ -359,29 +499,51 @@
     }
 
     .bucket-action-btn {
-      padding: 0.375rem;
+      padding: 0.5rem;
       border: none;
-      border-radius: 0.375rem;
+      border-radius: 0.5rem;
       background: var(--surface-light);
       color: var(--text-secondary);
       cursor: pointer;
-      transition: all 0.2s ease;
-      font-size: 0.875rem;
+      transition: all 0.3s ease;
+      font-size: 1rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 2rem;
-      height: 2rem;
+      width: 2.5rem;
+      height: 2.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .bucket-action-btn::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: all 0.3s ease;
+    }
+
+    .bucket-action-btn:hover::before {
+      width: 100%;
+      height: 100%;
     }
 
     .bucket-action-btn:hover {
       background: var(--primary-color);
       color: white;
-      transform: scale(1.05);
+      transform: scale(1.1);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
     }
 
     .bucket-action-btn.delete:hover {
       background: var(--error-color);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
     }
 
     .bucket-name-input {
@@ -659,8 +821,26 @@
     }
 
     @media (max-width: 768px) {
+      .header {
+        padding: 1.5rem 1rem;
+      }
+      
       .header h1 {
         font-size: 2rem;
+      }
+      
+      .header p {
+        font-size: 1rem;
+      }
+      
+      .auth-forms,
+      .user-info {
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      
+      .auth-forms input {
+        min-width: 280px;
       }
       
       .main-content {
@@ -669,13 +849,212 @@
       }
       
       .mic-button {
-        width: 120px;
-        height: 120px;
-        font-size: 2.5rem;
+        width: 140px;
+        height: 140px;
+        font-size: 3.5rem;
+      }
+      
+      .status {
+        font-size: 1rem;
+        padding: 0.875rem 1.5rem;
+        max-width: 90%;
       }
       
       .buckets-grid {
         grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+      
+      .bucket-card {
+        padding: 1.5rem;
+      }
+      
+      .bucket-actions {
+        opacity: 1;
+      }
+      
+      .project-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+      
+      .back-btn {
+        align-self: stretch;
+        justify-content: center;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .header {
+        padding: 1rem;
+      }
+      
+      .auth-forms input {
+        min-width: 250px;
+      }
+      
+      .mic-button {
+        width: 120px;
+        height: 120px;
+        font-size: 3rem;
+      }
+      
+      .bucket-card {
+        padding: 1.25rem;
+      }
+      
+      .bucket-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+      }
+      
+      .bucket-side {
+        align-self: flex-start;
+      }
+    }
+
+    /* Accessibility improvements */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* Focus styles for better accessibility */
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    /* High contrast mode support */
+    @media (prefers-contrast: high) {
+      :root {
+        --background: #000000;
+        --surface: #1a1a1a;
+        --surface-light: #333333;
+        --text-primary: #ffffff;
+        --border-color: #666666;
+      }
+    }
+
+    /* Keyboard hint styling */
+    .keyboard-hint {
+      animation: fadeInUp 0.8s ease-out 0.5s both;
+    }
+
+    .keyboard-hint kbd {
+      background: var(--surface-light);
+      color: var(--text-primary);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.375rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Loading spinner improvements */
+    .loading-spinner {
+      display: inline-block;
+      width: 1.5rem;
+      height: 1.5rem;
+      border: 3px solid var(--surface-light);
+      border-radius: 50%;
+      border-top-color: var(--primary-color);
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Improved button hover states */
+    .bucket-edit-btn,
+    .note-edit-btn {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .bucket-edit-btn::before,
+    .note-edit-btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.6s;
+    }
+
+    .bucket-edit-btn:hover::before,
+    .note-edit-btn:hover::before {
+      left: 100%;
+    }
+
+    /* Improved form validation styles */
+    .auth-forms input:invalid {
+      border-color: var(--error-color);
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+    }
+
+    .auth-forms input:valid {
+      border-color: var(--success-color);
+    }
+
+    /* Toast notification styles for better UX */
+    .toast {
+      position: fixed;
+      top: 2rem;
+      right: 2rem;
+      background: var(--surface);
+      color: var(--text-primary);
+      padding: 1rem 1.5rem;
+      border-radius: 0.75rem;
+      border: 2px solid var(--border-color);
+      box-shadow: var(--shadow-lg);
+      z-index: 1000;
+      animation: slideInRight 0.3s ease-out;
+      max-width: 400px;
+    }
+
+    .toast.success {
+      border-color: var(--success-color);
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+    }
+
+    .toast.error {
+      border-color: var(--error-color);
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--error-color);
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
       }
     }
   </style>
@@ -688,24 +1067,54 @@
       <h1>Voice Notes</h1>
       <p>Intelligent note-taking powered by AI</p>
       <div id="auth-forms" class="auth-forms">
-        <input id="auth-username" placeholder="Username" />
-        <input id="auth-password" type="password" placeholder="Password" />
-        <button id="signup-btn">Sign Up</button>
-        <button id="login-btn">Log In</button>
+        <input 
+          id="auth-username" 
+          placeholder="Username" 
+          autocomplete="username"
+          aria-label="Username"
+          required
+        />
+        <input 
+          id="auth-password" 
+          type="password" 
+          placeholder="Password" 
+          autocomplete="current-password"
+          aria-label="Password"
+          required
+        />
+        <button id="signup-btn" type="button">Sign Up</button>
+        <button id="login-btn" type="button">Log In</button>
       </div>
       <div id="user-info" class="user-info" style="display:none;">
-        Logged in as <span id="current-user"></span>
-        <button id="logout-btn">Log Out</button>
+        <span>Welcome back, <span id="current-user"></span>!</span>
+        <button id="logout-btn" type="button">Log Out</button>
       </div>
     </header>
 
     <main id="main-content" class="main-content" style="display:none;">
       <div class="recording-section">
         <div class="mic-container">
-          <button id="mic" class="mic-button">🎙️</button>
-          <div class="pulse-ring"></div>
+          <button 
+            id="mic" 
+            class="mic-button"
+            aria-label="Start voice recording"
+            title="Click to start recording (or press Space)"
+          >
+            🎙️
+          </button>
+          <div class="pulse-ring" aria-hidden="true"></div>
         </div>
-        <div id="status" class="status">Click the microphone to start recording</div>
+        <div 
+          id="status" 
+          class="status" 
+          role="status" 
+          aria-live="polite"
+        >
+          Click the microphone to start recording
+        </div>
+        <div class="keyboard-hint" style="text-align: center; margin-top: 1rem; color: var(--text-muted); font-size: 0.9rem;">
+          💡 Pro tip: Press <kbd>Space</kbd> to record, <kbd>Escape</kbd> to stop
+        </div>
       </div>
 
       <section class="buckets-section">
@@ -713,7 +1122,12 @@
           <h2 class="buckets-title">Your Projects</h2>
           <div id="buckets-count" class="buckets-count">Loading...</div>
         </div>
-        <div id="buckets" class="buckets-grid">
+        <div 
+          id="buckets" 
+          class="buckets-grid"
+          role="grid"
+          aria-label="Projects grid"
+        >
           <div class="empty-state">
             <div class="empty-state-icon">📁</div>
             <p>No projects yet. Start by recording your first note!</p>
@@ -730,12 +1144,21 @@
               <span id="project-note-count">0 notes</span>
             </div>
           </div>
-          <button id="back-btn" class="back-btn">
+          <button 
+            id="back-btn" 
+            class="back-btn"
+            aria-label="Back to projects"
+          >
             ← Back to Projects
           </button>
         </div>
         
-        <div id="notes-list" class="notes-list">
+        <div 
+          id="notes-list" 
+          class="notes-list"
+          role="list"
+          aria-label="Notes in project"
+        >
           <div class="empty-state">
             <div class="empty-state-icon">📝</div>
             <p>No notes in this project yet.</p>
