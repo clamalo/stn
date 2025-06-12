@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Speech Bucket Demo</title>
+  <style>
+    body, html {
+      height: 100%;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+    }
+    #mic {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: none;
+      background: #f44336;
+      color: white;
+      font-size: 48px;
+    }
+    #mic.recording {
+      background: #4caf50;
+    }
+    #buckets {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <button id="mic">🎙️</button>
+  <div id="status"></div>
+  <div id="buckets"></div>
+  <script src="app.js"></script>
+</body>
+</html>
